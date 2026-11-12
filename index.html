@@ -106,6 +106,8 @@ input[type=file]{display:none}
       <li>Tap <b>Test print</b> below. The border should sit just inside the label edges. If it's off, use the <b>nudge</b> settings.</li>
     </ol>
     <div class="bar"><button class="btn" id="testBtn">Test print</button><button class="btn" id="statusBtn">Check printer status</button><button class="btn" id="forgetBtn">Forget printer</button></div>
+    <p class="hint">Printer not in the list when you tap Connect printer? Try the other way of connecting:</p>
+    <div class="bar"><button class="btn" id="bleBtn">Connect another way (Bluetooth LE)</button><button class="btn" id="serialBtn">Connect the usual way (serial)</button></div>
   </details>
 
   <details class="card" id="packCard">
@@ -154,7 +156,7 @@ input[type=file]{display:none}
 /* ---------------- Settings ---------------- */
 const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
 const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
-const DEFAULTS = {size:"101.6x152.4", gap:3, density:10, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
+const DEFAULTS = {link:"serial", bleId:null, size:"101.6x152.4", gap:3, density:10, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
 let S = {...DEFAULTS};
 try { Object.assign(S, JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}")); } catch {}
 const $ = id => document.getElementById(id);
@@ -179,103 +181,204 @@ function say(text, kind = "info") { $("msg").innerHTML = text ? `<div class="msg
 function dialog(title, html) { $("ovTitle").textContent = title; $("ovBody").innerHTML = html; $("overlay").style.display = "flex"; }
 $("ovOk").onclick = () => $("overlay").style.display = "none";
 
-/* ---------------- Printer connection (Web Serial over Bluetooth Classic SPP) ---------------- */
-let port = null, busy = false;
+/* ---------------- Printer connection ----------------
+   Two routes to the printer:
+   - "serial": Web Serial over Bluetooth Classic (SPP). Chrome remembers the printer.
+   - "ble":    Web Bluetooth (Bluetooth Low Energy), writing TSPL to the printer's
+               write characteristic. Used when the printer isn't listed as a serial port. */
+let link = null, busy = false;         // link: {kind, name, write(bytes, onProgress), status(), close()}
+let bleDevice = null;
 function setStatus(text, cls) { $("statusText").textContent = text; $("dot").className = "dot " + (cls || ""); }
 function serialSupported() {
   if (!("serial" in navigator)) return false;
   try { if (document.featurePolicy && !document.featurePolicy.allowsFeature("serial")) return false; } catch {}
   return true;
 }
+function bleSupported() { return "bluetooth" in navigator; }
+function anySupported() { return S.link === "ble" ? bleSupported() : serialSupported(); }
+function saveSettings() { try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {} }
 function unsupportedHelp() {
   const inFrame = window.top !== window.self;
   dialog("Bluetooth printing isn't available here",
     inFrame ? "<p>This page is shown inside another page, which blocks printer access. Open it on its own in Chrome.</p>"
             : "<p>Open this page in <b>Chrome</b> on your Android tablet (Chrome 138 or newer). Samsung Internet and Firefox can't talk to Bluetooth printers from a web page.</p><p>If Chrome is already up to date, update it from the Play Store.</p>");
 }
+
+/* --- Serial (Bluetooth Classic) --- */
 async function knownPort() {
   if (!serialSupported()) return null;
   try { const ports = await navigator.serial.getPorts(); return ports[0] || null; } catch { return null; }
 }
-async function choosePort() {
-  if (!serialSupported()) { unsupportedHelp(); return null; }
-  try {
-    const p = await navigator.serial.requestPort({ allowedBluetoothServiceClassIds: [SPP_UUID] });
-    return p;
-  } catch (e) {
-    if (e && e.name === "NotFoundError") { say("No printer chosen. Make sure the JD-168BT is paired in the tablet's Bluetooth settings first, then tap Connect printer again.", "warn"); return null; }
-    throw e;
+async function serialLink(interactive) {
+  let p = await knownPort();
+  if (!p && interactive) {
+    try { p = await navigator.serial.requestPort({ allowedBluetoothServiceClassIds: [SPP_UUID] }); }
+    catch (e) {
+      if (e && e.name === "NotFoundError") {
+        say(`No printer chosen. If the list was empty, tap <b>Connect another way</b> under First-time setup to connect over Bluetooth LE instead.`, "warn");
+        $("setupCard").open = true; return null;
+      }
+      throw e;
+    }
   }
+  if (!p) return null;
+  if (!p.writable) await p.open({ baudRate: 115200, bufferSize: 65536 });
+  return {
+    kind: "serial", name: "Printer",
+    async write(bytes, onProgress) {
+      const writer = p.writable.getWriter();
+      try {
+        const CHUNK = 4096;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          await writer.write(bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+          if (onProgress) onProgress(Math.min(i + CHUNK, bytes.length) / bytes.length);
+        }
+      } finally { writer.releaseLock(); }
+    },
+    async status() {
+      await this.write(new Uint8Array([0x1b, 0x21, 0x3f])); // ESC ! ?  -> one status byte
+      const reader = p.readable.getReader(); let timer;
+      try {
+        const got = await Promise.race([reader.read(), new Promise(r => timer = setTimeout(() => r(null), 2500))]);
+        return got && got.value && got.value.length ? got.value[0] : null;
+      } finally { clearTimeout(timer); try { await reader.cancel(); } catch {} reader.releaseLock(); }
+    },
+    async close() { try { await p.close(); } catch {} },
+    async forget() { try { await p.close(); } catch {} try { if (p.forget) await p.forget(); } catch {} }
+  };
 }
-async function openPort(p) {
-  if (p.writable) return p; // already open
-  await p.open({ baudRate: 115200, bufferSize: 65536 });
-  return p;
+
+/* --- Bluetooth LE --- */
+// GATT services used by common Bluetooth label/receipt printer modules. Chrome only lets a page
+// see services listed here, so the list is broad; the first writable characteristic is used.
+const BLE_SERVICES = [
+  "000018f0-0000-1000-8000-00805f9b34fb", "0000ff00-0000-1000-8000-00805f9b34fb", "0000ffe0-0000-1000-8000-00805f9b34fb",
+  "0000fff0-0000-1000-8000-00805f9b34fb", "0000ae30-0000-1000-8000-00805f9b34fb", "0000ae3a-0000-1000-8000-00805f9b34fb",
+  "0000fee7-0000-1000-8000-00805f9b34fb", "0000ff12-0000-1000-8000-00805f9b34fb", "0000fef0-0000-1000-8000-00805f9b34fb",
+  "0000abf0-0000-1000-8000-00805f9b34fb", "0000ffb0-0000-1000-8000-00805f9b34fb", "0000ae00-0000-1000-8000-00805f9b34fb",
+  "49535343-fe7d-4ae5-8fa9-9fafd205e455", "e7810a71-73ae-499d-8c15-faa9aef0c3f2", "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
+  "0000fd00-0000-1000-8000-00805f9b34fb", "0000ff80-0000-1000-8000-00805f9b34fb", "000018f1-0000-1000-8000-00805f9b34fb"
+];
+async function bleLink(interactive) {
+  if (!bleSupported()) { unsupportedHelp(); return null; }
+  if (!bleDevice && navigator.bluetooth.getDevices) {
+    try { const ds = await navigator.bluetooth.getDevices(); bleDevice = ds.find(d => d.id === S.bleId) || null; } catch {}
+  }
+  if (!bleDevice) {
+    if (!interactive) return null;
+    try {
+      bleDevice = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BLE_SERVICES });
+    } catch (e) {
+      if (e && e.name === "NotFoundError") { say("No printer chosen. In the list, look for <b>JD-168BT</b> (it may have a slightly different name). Make sure the printer is on and the Jadens app is closed.", "warn"); return null; }
+      throw e;
+    }
+    S.bleId = bleDevice.id; saveSettings();
+  }
+  const server = bleDevice.gatt.connected ? bleDevice.gatt : await bleDevice.gatt.connect();
+  let target = null, notify = null;
+  const services = await server.getPrimaryServices();
+  for (const sv of services) {
+    let chars = []; try { chars = await sv.getCharacteristics(); } catch { continue; }
+    for (const c of chars) {
+      if (!target && (c.properties.writeWithoutResponse || c.properties.write)) target = c;
+      if (!notify && (c.properties.notify || c.properties.indicate)) notify = c;
+    }
+    if (target) break;
+  }
+  if (!target) {
+    const ids = services.map(s => s.uuid).join(", ") || "none";
+    try { server.disconnect(); } catch {}
+    bleDevice = null; S.bleId = null; saveSettings();
+    throw new Error(`that device has no printing channel the app recognises (services found: ${ids}). Send this message to Claude so it can be added`);
+  }
+  const fast = target.properties.writeWithoutResponse;
+  return {
+    kind: "ble", name: bleDevice.name || "Printer",
+    async write(bytes, onProgress) {
+      const CHUNK = 180;
+      for (let i = 0, n = 0; i < bytes.length; i += CHUNK, n++) {
+        const part = bytes.slice(i, Math.min(i + CHUNK, bytes.length));
+        if (fast) { await target.writeValueWithoutResponse(part); if (n % 16 === 15) await new Promise(r => setTimeout(r, 15)); }
+        else await target.writeValueWithResponse(part);
+        if (onProgress && n % 8 === 0) onProgress(Math.min(i + CHUNK, bytes.length) / bytes.length);
+      }
+      if (onProgress) onProgress(1);
+    },
+    async status() {
+      if (!notify) return null;
+      return new Promise(async res => {
+        const done = v => { clearTimeout(t); notify.removeEventListener("characteristicvaluechanged", h); res(v); };
+        const h = e => done(e.target.value.byteLength ? e.target.value.getUint8(0) : null);
+        const t = setTimeout(() => done(null), 2500);
+        try { await notify.startNotifications(); notify.addEventListener("characteristicvaluechanged", h); await this.write(new Uint8Array([0x1b, 0x21, 0x3f])); }
+        catch { done(null); }
+      });
+    },
+    async close() { try { bleDevice.gatt.disconnect(); } catch {} },
+    async forget() { try { bleDevice.gatt.disconnect(); } catch {} try { if (bleDevice.forget) await bleDevice.forget(); } catch {} bleDevice = null; S.bleId = null; saveSettings(); }
+  };
 }
+
+/* --- Common --- */
 async function connect(interactive) {
+  if (link) return link;
   setStatus("Connecting…", "busy");
   try {
-    let p = port || await knownPort();
-    if (!p && interactive) p = await choosePort();
-    if (!p) { setStatus("Not connected", ""); return null; }
-    await openPort(p);
-    port = p;
-    setStatus("Connected", "on");
+    link = S.link === "ble" ? await bleLink(interactive) : await serialLink(interactive);
+    if (!link) { setStatus("Not connected", ""); return null; }
+    if (link.kind === "ble" && bleDevice) bleDevice.addEventListener("gattserverdisconnected", () => { link = null; setStatus("Not connected", ""); $("connectBtn").textContent = "Connect printer"; }, { once: true });
+    setStatus(link.kind === "ble" ? "Connected (BLE)" : "Connected", "on");
     $("connectBtn").textContent = "Printer ✓";
-    return port;
+    return link;
   } catch (e) {
-    setStatus("Not connected", "err");
-    port = null;
+    link = null; setStatus("Not connected", "err");
     say(`Couldn't connect to the printer: ${esc(e.message || e)}. Check it's switched on, nearby, and that the Jadens app is closed, then try again.`, "err");
     return null;
   }
 }
 async function disconnect() {
-  if (!port) return;
-  try { await port.close(); } catch {}
-  setStatus("Not connected", "");
-  $("connectBtn").textContent = "Connect printer";
+  if (link) await link.close();
+  link = null; setStatus("Not connected", ""); $("connectBtn").textContent = "Connect printer";
 }
 $("connectBtn").onclick = async () => {
-  if (port && port.writable) { await disconnect(); port = null; return; }
-  const p = await connect(true);
-  if (p) say("Printer connected. It will reconnect automatically next time.", "ok");
+  if (link) { await disconnect(); return; }
+  if (!anySupported()) { unsupportedHelp(); return; }
+  const l = await connect(true);
+  if (l) say(l.kind === "ble" ? "Printer connected over Bluetooth LE." : "Printer connected. It will reconnect automatically next time.", "ok");
+};
+$("bleBtn").onclick = async () => {
+  await disconnect(); S.link = "ble"; saveSettings();
+  const l = await connect(true);
+  if (l) say("Printer connected over Bluetooth LE. The app will use this way from now on. Tap Test print.", "ok");
+};
+$("serialBtn").onclick = async () => {
+  await disconnect(); S.link = "serial"; saveSettings();
+  const l = await connect(true);
+  if (l) say("Printer connected over Bluetooth serial. Tap Test print.", "ok");
 };
 $("forgetBtn").onclick = async () => {
-  const p = port || await knownPort();
-  if (!p) { say("No printer is remembered.", "info"); return; }
-  try { await disconnect(); if (p.forget) await p.forget(); } catch {}
-  port = null; say("Printer forgotten. Tap Connect printer to choose it again.", "info");
+  const l = link || await connect(false);
+  if (l) await l.forget();
+  link = null; setStatus("Not connected", ""); $("connectBtn").textContent = "Connect printer";
+  say("Printer forgotten. Tap Connect printer to choose it again.", "info");
 };
 
 async function writeBytes(bytes, onProgress) {
-  const p = await connect(true);
-  if (!p) throw new Error("Printer not connected");
-  const writer = p.writable.getWriter();
-  try {
-    const CHUNK = 4096;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      await writer.write(bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
-      if (onProgress) onProgress(Math.min(i + CHUNK, bytes.length) / bytes.length);
-    }
-  } finally { writer.releaseLock(); }
+  const l = await connect(true);
+  if (!l) throw new Error("Printer not connected");
+  try { await l.write(bytes, onProgress); }
+  catch (e) { link = null; throw e; }
 }
 async function readStatus() {
-  const p = await connect(true);
-  if (!p) return;
-  await writeBytes(new Uint8Array([0x1b, 0x21, 0x3f])); // ESC ! ?  -> one status byte
-  const reader = p.readable.getReader();
-  let timer;
-  try {
-    const got = await Promise.race([reader.read(), new Promise(r => timer = setTimeout(() => r(null), 2500))]);
-    if (!got || !got.value || !got.value.length) { say("Printer connected, but it didn't report a status. That's normal for some models.", "info"); return; }
-    const b = got.value[0];
-    if (b === 0) { say("Printer is ready.", "ok"); return; }
-    const issues = [];
-    if (b & 1) issues.push("the lid is open"); if (b & 2) issues.push("paper is jammed"); if (b & 4) issues.push("it's out of labels");
-    if (b & 16) issues.push("it's paused"); if (b & 32) issues.push("it's printing");
-    say(`Printer says: ${issues.join(", ") || "status code " + b}.`, issues.length ? "warn" : "info");
-  } finally { clearTimeout(timer); try { await reader.cancel(); } catch {} reader.releaseLock(); }
+  const l = await connect(true);
+  if (!l) return;
+  const b = await l.status();
+  if (b === null || b === undefined) { say("Printer connected, but it didn't report a status. That's normal for some models.", "info"); return; }
+  if (b === 0) { say("Printer is ready.", "ok"); return; }
+  const issues = [];
+  if (b & 1) issues.push("the lid is open"); if (b & 2) issues.push("paper is jammed"); if (b & 4) issues.push("it's out of labels");
+  if (b & 16) issues.push("it's paused"); if (b & 32) issues.push("it's printing");
+  say(`Printer says: ${issues.join(", ") || "status code " + b}.`, issues.length ? "warn" : "info");
 }
 $("statusBtn").onclick = () => readStatus().catch(e => say("Status check failed: " + esc(e.message), "err"));
 
@@ -523,7 +626,7 @@ function drawQueue() {
 /* ---------------- Printing ---------------- */
 async function printItems(list) {
   if (busy || !list.length) return;
-  if (!serialSupported()) { unsupportedHelp(); return; }
+  if (!anySupported()) { unsupportedHelp(); return; }
   busy = true; drawQueue(); say("");
   const total = list.reduce((n, i) => n + i.copies, 0);
   $("progressWrap").hidden = false; $("progress").value = 0;
@@ -545,10 +648,10 @@ async function printItems(list) {
     say(`Sent ${total} label${total === 1 ? "" : "s"} to the printer.`, "ok");
   } catch (e) {
     console.error(e);
-    port = null; setStatus("Not connected", "err");
+    link = null; setStatus("Not connected", "err");
     say(`Printing stopped after ${sent} of ${total}: ${esc(e.message || e)}. The labels already printed are ticked; tap Print to send the rest.`, "err");
   } finally {
-    busy = false; if (port) setStatus("Connected", "on");
+    busy = false; if (link) setStatus(link.kind === "ble" ? "Connected (BLE)" : "Connected", "on");
     setTimeout(() => $("progressWrap").hidden = true, 1500);
     drawQueue();
   }
@@ -606,7 +709,7 @@ async function handleShared() {
   const files = recs.map(r => r.file instanceof File ? r.file : new File([r.file], r.name || "shared label", { type: r.type || r.file.type }));
   if (!files.length) { say("Nothing was received from the share. Try saving the label and tapping Add labels.", "warn"); return; }
   const added = await addFiles(files, "label");
-  if (S.autoPrint && added.length && serialSupported() && (port || await knownPort())) await printItems(added);
+  if (S.autoPrint && added.length && anySupported() && (link || await connect(false))) await printItems(added);
 }
 
 /* ---------------- Start ---------------- */
@@ -614,7 +717,8 @@ drawQueue();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => console.warn("Service worker:", e));
 (async () => {
   const shared = new URLSearchParams(location.search).has("shared");
-  if (!serialSupported()) setStatus("Use Chrome on Android", "err");
+  if (!anySupported()) setStatus("Use Chrome on Android", "err");
+  else if (S.link === "ble") { setStatus("Bluetooth LE printer", ""); }
   else {
     const p = await knownPort();
     if (p) { setStatus("Printer remembered", ""); $("connectBtn").textContent = "Connect"; }

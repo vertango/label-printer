@@ -25,6 +25,13 @@ MOCK = r"""
   const serial = { async getPorts(){ if (granted.length && !granted[0]) granted=[new FakePort()]; return granted; },
     async requestPort(o){ window.__requestOpts=o; const p=new FakePort(); granted=[p]; sessionStorage.setItem("fakeGranted","1"); return p; } };
   Object.defineProperty(navigator, "serial", { value: serial });
+  const ch = { properties:{writeWithoutResponse:true, write:true, notify:false},
+    async writeValueWithoutResponse(b){ window.__sent.push(Array.from(new Uint8Array(b.buffer||b))); },
+    async writeValueWithResponse(b){ window.__sent.push(Array.from(new Uint8Array(b.buffer||b))); } };
+  const gatt = { connected:false, async connect(){ this.connected=true; return this; }, disconnect(){ this.connected=false; },
+    async getPrimaryServices(){ window.__bleServicesAsked=true; return [{uuid:"000018f0-0000-1000-8000-00805f9b34fb", async getCharacteristics(){ return [ch]; }}]; } };
+  const dev = { id:"dev1", name:"JD-168BT_9291", gatt, addEventListener(){}, async forget(){} };
+  Object.defineProperty(navigator, "bluetooth", { value: { async requestDevice(o){ window.__bleOpts=o; return dev; } } });
 })();
 """
 
@@ -90,6 +97,16 @@ async def main():
         for j in decode(raw2, "test"): print(j)
         print("bytes sent:", len(raw))
         print("\n".join(l for l in logs if "error" in l.lower() or "PAGEERROR" in l) or "no console errors")
+        # ---- Bluetooth LE route ----
+        await pg.evaluate("window.__sent=[]")
+        await pg.click("#bleBtn"); await pg.wait_for_timeout(500)
+        print("BLE connect:", await pg.inner_text("#msg"), "|", await pg.inner_text("#statusText"))
+        await pg.click("#testBtn"); await pg.wait_for_function("/Sent 1 label/.test(document.getElementById('msg').textContent)", timeout=30000)
+        rawb = bytes(b for ch in await pg.evaluate("window.__sent") for b in ch)
+        print("BLE chunks:", await pg.evaluate("window.__sent.length"), "max chunk:", await pg.evaluate("Math.max(...window.__sent.map(c=>c.length))"))
+        for j in decode(rawb, "ble"): print(j)
+        await pg.click("#serialBtn"); await pg.wait_for_timeout(500)
+        print("Back to serial:", await pg.inner_text("#statusText"))
         # ---- Share-to-app flow with auto-print ----
         await pg.evaluate("navigator.serviceWorker.ready")
         await pg.evaluate("(()=>{const s=JSON.parse(localStorage.getItem('labelPrinter.settings')||'{}');s.autoPrint=true;localStorage.setItem('labelPrinter.settings',JSON.stringify(s));})()")
