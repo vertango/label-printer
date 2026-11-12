@@ -143,6 +143,7 @@ input[type=file]{display:none}
       <label>Move print up / down<select id="sNudgeY"></select></label>
       <label class="check"><input id="sFlip" type="checkbox"> Print upside down</label>
       <label class="check"><input id="sFast" type="checkbox"> Fast sending (turn off if labels print wrongly)</label>
+      <label class="check"><input id="sSmooth" type="checkbox"> Print batches without stopping (turn off if labels in a batch go out of line)</label>
       <label class="check"><input id="sAuto" type="checkbox"> Print as soon as a label is shared to this app</label>
     </div>
     <p class="hint">Settings are kept on this tablet.</p>
@@ -159,11 +160,11 @@ input[type=file]{display:none}
 /* ---------------- Settings ---------------- */
 const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
 const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
-const DEFAULTS = {fast:true, link:"serial", bleId:null, size:"101.6x152.4", gap:3, density:10, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
+const DEFAULTS = {smooth:true, fast:true, link:"serial", bleId:null, size:"101.6x152.4", gap:3, density:10, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
 let S = {...DEFAULTS};
 try { Object.assign(S, JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}")); } catch {}
 const $ = id => document.getElementById(id);
-const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sFast:"fast", sAuto:"autoPrint"};
+const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sFast:"fast", sSmooth:"smooth", sAuto:"autoPrint"};
 // Position nudges are drop-downs (tablet number keypads have no minus key).
 for (const [id, neg, pos] of [["sNudgeX", "left", "right"], ["sNudgeY", "up", "down"]]) {
   const el = $(id);
@@ -404,7 +405,6 @@ function tsplHeader() {
     `DIRECTION ${S.flip ? 1 : 0},0`,
     `REFERENCE 0,0`,
     `OFFSET 0 mm`,
-    `SET TEAR ON`,
     `DENSITY ${Math.max(0, Math.min(15, S.density | 0))}`,
     `SPEED ${Math.max(1, Math.min(6, S.speed | 0))}`,
     `CLS`
@@ -423,13 +423,16 @@ function bitmapPart(mono, y0, y1, c0, c1) {
   for (let y = 0; y < h; y++) for (let c = 0; c < w; c++) data[y * w + c] = ~mono.bits[(y0 + y) * bpr + c0 + c] & 0xff;
   return concatBytes([head, data, enc.encode("\r\n")]);
 }
-function tsplJob(mono, copies) {
-  // mono: {w (dots, multiple of 8), h, bits:Uint8Array} with 1 = black
-  const tail = enc.encode(`PRINT 1,${Math.max(1, copies | 0)}\r\n`);
-  const parts = [enc.encode(tsplHeader())];
+function tsplJob(mono, copies, opts = {}) {
+  // mono: {w (dots, multiple of 8), h, bits:Uint8Array} with 1 = black.
+  // opts.first: send the setup lines (size, gap, darkness…); later labels in a batch skip them.
+  // opts.last:  feed this label out to the tear bar. Earlier labels in a batch stay put, so the
+  //             printer doesn't push each one out and pull the paper back before the next.
+  const first = opts.first !== false, last = opts.last !== false;
+  const parts = [enc.encode(first ? tsplHeader() : "CLS\r\n")];
   if (S.fast === false) parts.push(bitmapPart(mono, 0, mono.h, 0, mono.w / 8));
   else parts.push(...fastParts(mono));
-  parts.push(tail);
+  parts.push(enc.encode(`SET TEAR ${last ? "ON" : "OFF"}\r\nPRINT 1,${Math.max(1, copies | 0)}\r\n`));
   return concatBytes(parts);
 }
 // Fast sending: Bluetooth serial is slow, so send less. Solid black rectangles (barcode bars,
@@ -808,12 +811,17 @@ async function printItems(list) {
     const p = await connect(true);
     if (!p) throw new Error("Printer not connected");
     setStatus("Printing…", "busy");
-    for (const it of list) {
+    // Prepare every label first, so nothing has to be worked out between labels.
+    $("progressText").textContent = "Preparing labels…";
+    const smooth = S.smooth !== false, jobs = [];
+    for (const [i, it] of list.entries()) {
       if (!it.mono) await renderItem(it);
       if (!it.mono) throw new Error(`"${it.src.name}" couldn't be prepared`);
+      jobs.push(tsplJob(it.mono, it.copies, smooth ? { first: i === 0, last: i === list.length - 1 } : {}));
+    }
+    for (const [i, it] of list.entries()) {
       $("progressText").textContent = `Sending ${it.src.name} (${sent + 1}–${sent + it.copies} of ${total})…`;
-      const job = tsplJob(it.mono, it.copies);
-      await writeBytes(job, f => $("progress").value = (sent + f * it.copies) / total);
+      await writeBytes(jobs[i], f => $("progress").value = (sent + f * it.copies) / total);
       sent += it.copies; it.done = true; drawQueue();
     }
     $("progress").value = 1;
