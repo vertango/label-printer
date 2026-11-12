@@ -2,7 +2,7 @@
 // 1. Receives labels shared from other apps (Android share menu -> "Label Printer"),
 //    stores them in IndexedDB and opens the app with ?shared=1 so it can pick them up.
 // 2. Keeps a copy of the app so it opens quickly and works without internet.
-const CACHE = "label-printer-v5";
+const CACHE = "label-printer-v6";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png",
   "./vendor/pdfjs/pdf.min.mjs", "./vendor/pdfjs/pdf.worker.min.mjs"];
 
@@ -41,7 +41,9 @@ self.addEventListener("fetch", e => {
   }
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   // Network first (so updates show straight away), cached copy when offline.
-  e.respondWith(fetch(e.request).then(r => {
+  // cache: "no-cache" makes the browser check GitHub for a newer copy instead of reusing
+  // its own 10-minute copy, so updates show the next time the app opens.
+  e.respondWith(fetch(e.request, { cache: "no-cache" }).then(r => {
     if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
     return r;
   }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match("./index.html"))));

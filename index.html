@@ -808,7 +808,9 @@ async function handleShared() {
 
 /* ---------------- Start ---------------- */
 drawQueue();
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => console.warn("Service worker:", e));
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => reg.update()).catch(e => console.warn("Service worker:", e));
+}
 (async () => {
   const shared = new URLSearchParams(location.search).has("shared");
   if (!anySupported()) setStatus("Use Chrome on Android", "err");
