@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f3a5f">
+<title>Label Printer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+:root{--ink:#1b2430;--muted:#5d6b7a;--line:#d9dfe6;--bg:#f3f5f8;--card:#fff;--accent:#1f3a5f;--accent2:#2f6fb0;--ok:#1e7b46;--warn:#a35c00;--bad:#b3261e;--r:14px}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+header{background:var(--accent);color:#fff;padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header h1{font-size:20px;margin:0;font-weight:650;flex:1;min-width:150px}
+.status{display:flex;align-items:center;gap:8px;font-size:15px;background:rgba(255,255,255,.12);padding:6px 12px;border-radius:999px}
+.dot{width:11px;height:11px;border-radius:50%;background:#9aa7b4}
+.dot.on{background:#4ade80}.dot.busy{background:#fbbf24}.dot.err{background:#f87171}
+main{max-width:1100px;margin:0 auto;padding:16px}
+button,select,input{font:inherit}
+.btn{border:0;border-radius:12px;padding:13px 18px;font-weight:600;cursor:pointer;background:#e6ebf1;color:var(--ink);min-height:50px;touch-action:manipulation}
+.btn.primary{background:var(--accent2);color:#fff}
+.btn.big{font-size:19px;padding:16px 22px;min-height:60px}
+.btn.light{background:#fff;color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.small{min-height:40px;padding:8px 12px;font-size:15px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+.bar .grow{flex:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:18px}
+.hint{color:var(--muted);font-size:15px;margin:6px 0}
+.msg{padding:12px 14px;border-radius:12px;margin:0 0 14px;font-size:16px}
+.msg.err{background:#fde8e7;color:var(--bad)}.msg.ok{background:#e4f4ea;color:var(--ok)}.msg.info{background:#e8f0fa;color:var(--accent)}.msg.warn{background:#fff3e0;color:var(--warn)}
+.queue{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.item{background:var(--card);border:2px solid var(--line);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;gap:8px;position:relative}
+.item.off{opacity:.45}
+.item.done{border-color:#7cc59a}
+.item canvas{width:100%;height:auto;aspect-ratio:2/3;border:1px solid #c9d1da;border-radius:6px;background:#fff;image-rendering:pixelated}
+.item .name{font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.item select{flex:1;min-height:40px;border:1px solid var(--line);border-radius:10px;padding:4px 6px;background:#fff;font-size:15px}
+.item .sel{position:absolute;top:16px;left:16px;width:30px;height:30px;accent-color:var(--accent2)}
+.badge{position:absolute;top:16px;right:16px;background:var(--ok);color:#fff;font-size:13px;padding:3px 8px;border-radius:999px}
+.stepper{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stepper button{border:0;background:#eef2f6;width:40px;height:40px;font-size:20px}
+.stepper span{min-width:42px;text-align:center;font-weight:600}
+.empty{text-align:center;padding:36px 16px;color:var(--muted);border:2px dashed var(--line);border-radius:var(--r);background:#fff}
+.empty strong{display:block;color:var(--ink);font-size:19px;margin-bottom:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px 18px}
+.grid label{display:flex;flex-direction:column;font-size:15px;color:var(--muted);gap:4px}
+.grid input,.grid select{min-height:46px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;color:var(--ink);background:#fff}
+.grid label.check{flex-direction:row;align-items:center;gap:10px;color:var(--ink)}
+.grid label.check input{min-height:0;width:24px;height:24px}
+details>summary{cursor:pointer;font-weight:600;font-size:18px;padding:4px 0;list-style:none}
+details>summary::before{content:"▸ ";color:var(--muted)}
+details[open]>summary::before{content:"▾ "}
+ol.steps{padding-left:22px;margin:6px 0}ol.steps li{margin:6px 0}
+progress{width:100%;height:14px}
+#overlay{position:fixed;inset:0;background:rgba(15,25,40,.55);display:none;align-items:center;justify-content:center;z-index:20;padding:20px}
+#overlay .box{background:#fff;border-radius:16px;padding:22px;max-width:440px;width:100%}
+#overlay h3{margin:0 0 10px}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏷️ Label Printer</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></div>
+  <button class="btn light small" id="connectBtn">Connect printer</button>
+</header>
+<main>
+  <div id="msg"></div>
+
+  <div class="bar">
+    <button class="btn primary big" id="addBtn">＋ Add labels (PDF / image)</button>
+    <button class="btn big" id="packBtn">📋 Add packing list</button>
+    <span class="grow"></span>
+    <button class="btn primary big" id="printBtn" disabled>🖨️ Print</button>
+  </div>
+  <input type="file" id="fileIn" accept="application/pdf,.pdf,image/*" multiple>
+  <input type="file" id="packIn" accept="application/pdf,.pdf,image/*" multiple>
+
+  <div class="bar" id="queueBar" hidden>
+    <span class="hint" id="queueInfo"></span>
+    <span class="grow"></span>
+    <button class="btn small" id="selAllBtn">Select all</button>
+    <button class="btn small" id="clearDoneBtn">Remove printed</button>
+    <button class="btn small" id="clearBtn">Clear all</button>
+  </div>
+  <div id="progressWrap" class="card" hidden><div id="progressText" class="hint" style="margin-top:0"></div><progress id="progress" value="0" max="1"></progress></div>
+
+  <div class="queue" id="queue"></div>
+  <div class="empty" id="empty"><strong>No labels yet</strong>Tap <b>Add labels</b> and pick your shipping label PDFs from Shopify, eBay or Royal Mail Click &amp; Drop. You can pick several at once; every page becomes one 4x6 label.</div>
+
+  <div style="height:16px"></div>
+
+  <details class="card" id="setupCard">
+    <summary>First-time setup</summary>
+    <ol class="steps">
+      <li>Turn the printer on. On the tablet open <b>Settings → Connections → Bluetooth</b>, tap <b>JD-168BT_xxxx</b> and pair it (PIN <b>0000</b> if asked).</li>
+      <li>Close the Jadens app so it isn't holding the connection.</li>
+      <li>On this page tap <b>Connect printer</b> and choose the JD-168BT. Chrome remembers it, so next time it reconnects by itself when you print.</li>
+      <li>To get the app on your home screen and in the <b>Share</b> menu: tap Chrome's <b>⋮</b> menu → <b>Add to home screen</b> → <b>Install</b>. Then, from a downloaded label, tap <b>Share → Label Printer</b>.</li>
+      <li>Tap <b>Test print</b> below. The border should sit just inside the label edges. If it's off, use the <b>nudge</b> settings.</li>
+    </ol>
+    <div class="bar"><button class="btn" id="testBtn">Test print</button><button class="btn" id="statusBtn">Check printer status</button><button class="btn" id="forgetBtn">Forget printer</button></div>
+  </details>
+
+  <details class="card" id="packCard">
+    <summary>Printing the Outlet Analytics packing list</summary>
+    <ol class="steps">
+      <li>In Outlet Analytics open <b>Packing list</b> and tap <b>Print 4x6</b>.</li>
+      <li>In the print screen choose <b>Save as PDF</b> as the printer and save it.</li>
+      <li>Here, tap <b>Add packing list</b> and pick that PDF. Long lists print over several labels, in order.</li>
+    </ol>
+  </details>
+
+  <details class="card">
+    <summary>Settings</summary>
+    <div class="grid" style="margin-top:10px">
+      <label>Label size
+        <select id="sSize">
+          <option value="101.6x152.4">4 x 6 in (shipping)</option>
+          <option value="100x150">100 x 150 mm</option>
+          <option value="101.6x101.6">4 x 4 in</option>
+          <option value="101.6x76.2">4 x 3 in</option>
+          <option value="57x32">57 x 32 mm</option>
+        </select></label>
+      <label>Gap between labels (mm)<input id="sGap" type="number" step="0.5" min="0" max="10"></label>
+      <label>Darkness (1–15)<input id="sDensity" type="number" min="1" max="15"></label>
+      <label>Speed (1–6)<input id="sSpeed" type="number" min="1" max="6"></label>
+      <label>Black/white cut-off (lighter ↔ darker)<input id="sThresh" type="range" min="60" max="230"></label>
+      <label>Photos / grey areas
+        <select id="sDither"><option value="0">Sharp (best for barcodes)</option><option value="1">Dotted shading (photos)</option></select></label>
+      <label>Margin inside label (mm)<input id="sMargin" type="number" step="0.5" min="0" max="10"></label>
+      <label>Nudge right (mm, minus = left)<input id="sNudgeX" type="number" step="0.5" min="-10" max="10"></label>
+      <label>Nudge down (mm, minus = up)<input id="sNudgeY" type="number" step="0.5" min="-10" max="10"></label>
+      <label class="check"><input id="sFlip" type="checkbox"> Print upside down</label>
+      <label class="check"><input id="sAuto" type="checkbox"> Print as soon as a label is shared to this app</label>
+    </div>
+    <p class="hint">Settings are kept on this tablet.</p>
+  </details>
+
+  <p class="hint" style="text-align:center">Works in Chrome on Android with Bluetooth printers that use TSPL (Jadens, Munbyn, Rollo and similar). Your files never leave this tablet.</p>
+</main>
+
+<div id="overlay"><div class="box"><h3 id="ovTitle"></h3><div id="ovBody"></div><div class="bar" style="margin:16px 0 0"><span class="grow"></span><button class="btn primary" id="ovOk">OK</button></div></div></div>
+
+
+<script>
+"use strict";
+/* ---------------- Settings ---------------- */
+const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
+const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
+const DEFAULTS = {size:"101.6x152.4", gap:3, density:10, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
+let S = {...DEFAULTS};
+try { Object.assign(S, JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}")); } catch {}
+const $ = id => document.getElementById(id);
+const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sAuto:"autoPrint"};
+for (const [id,key] of Object.entries(F)) {
+  const el = $(id);
+  if (el.type === "checkbox") el.checked = !!S[key]; else el.value = S[key];
+  el.addEventListener("change", () => {
+    S[key] = el.type === "checkbox" ? el.checked : (el.type === "number" || el.type === "range") ? Number(el.value) : el.value;
+    try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
+    if (["size","thresh","dither","margin"].includes(key)) rerenderAll();
+  });
+}
+function labelDots() {
+  const [w, h] = S.size.split("x").map(Number);
+  const wd = Math.round(w * DPMM), hd = Math.round(h * DPMM);
+  return { wmm: w, hmm: h, w: wd, h: hd, bytes: Math.ceil(wd / 8) };
+}
+
+/* ---------------- Messages ---------------- */
+function say(text, kind = "info") { $("msg").innerHTML = text ? `<div class="msg ${kind}">${text}</div>` : ""; }
+function dialog(title, html) { $("ovTitle").textContent = title; $("ovBody").innerHTML = html; $("overlay").style.display = "flex"; }
+$("ovOk").onclick = () => $("overlay").style.display = "none";
+
+/* ---------------- Printer connection (Web Serial over Bluetooth Classic SPP) ---------------- */
+let port = null, busy = false;
+function setStatus(text, cls) { $("statusText").textContent = text; $("dot").className = "dot " + (cls || ""); }
+function serialSupported() {
+  if (!("serial" in navigator)) return false;
+  try { if (document.featurePolicy && !document.featurePolicy.allowsFeature("serial")) return false; } catch {}
+  return true;
+}
+function unsupportedHelp() {
+  const inFrame = window.top !== window.self;
+  dialog("Bluetooth printing isn't available here",
+    inFrame ? "<p>This page is shown inside another page, which blocks printer access. Open it on its own in Chrome.</p>"
+            : "<p>Open this page in <b>Chrome</b> on your Android tablet (Chrome 138 or newer). Samsung Internet and Firefox can't talk to Bluetooth printers from a web page.</p><p>If Chrome is already up to date, update it from the Play Store.</p>");
+}
+async function knownPort() {
+  if (!serialSupported()) return null;
+  try { const ports = await navigator.serial.getPorts(); return ports[0] || null; } catch { return null; }
+}
+async function choosePort() {
+  if (!serialSupported()) { unsupportedHelp(); return null; }
+  try {
+    const p = await navigator.serial.requestPort({ allowedBluetoothServiceClassIds: [SPP_UUID] });
+    return p;
+  } catch (e) {
+    if (e && e.name === "NotFoundError") { say("No printer chosen. Make sure the JD-168BT is paired in the tablet's Bluetooth settings first, then tap Connect printer again.", "warn"); return null; }
+    throw e;
+  }
+}
+async function openPort(p) {
+  if (p.writable) return p; // already open
+  await p.open({ baudRate: 115200, bufferSize: 65536 });
+  return p;
+}
+async function connect(interactive) {
+  setStatus("Connecting…", "busy");
+  try {
+    let p = port || await knownPort();
+    if (!p && interactive) p = await choosePort();
+    if (!p) { setStatus("Not connected", ""); return null; }
+    await openPort(p);
+    port = p;
+    setStatus("Connected", "on");
+    $("connectBtn").textContent = "Printer ✓";
+    return port;
+  } catch (e) {
+    setStatus("Not connected", "err");
+    port = null;
+    say(`Couldn't connect to the printer: ${esc(e.message || e)}. Check it's switched on, nearby, and that the Jadens app is closed, then try again.`, "err");
+    return null;
+  }
+}
+async function disconnect() {
+  if (!port) return;
+  try { await port.close(); } catch {}
+  setStatus("Not connected", "");
+  $("connectBtn").textContent = "Connect printer";
+}
+$("connectBtn").onclick = async () => {
+  if (port && port.writable) { await disconnect(); port = null; return; }
+  const p = await connect(true);
+  if (p) say("Printer connected. It will reconnect automatically next time.", "ok");
+};
+$("forgetBtn").onclick = async () => {
+  const p = port || await knownPort();
+  if (!p) { say("No printer is remembered.", "info"); return; }
+  try { await disconnect(); if (p.forget) await p.forget(); } catch {}
+  port = null; say("Printer forgotten. Tap Connect printer to choose it again.", "info");
+};
+
+async function writeBytes(bytes, onProgress) {
+  const p = await connect(true);
+  if (!p) throw new Error("Printer not connected");
+  const writer = p.writable.getWriter();
+  try {
+    const CHUNK = 4096;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      await writer.write(bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+      if (onProgress) onProgress(Math.min(i + CHUNK, bytes.length) / bytes.length);
+    }
+  } finally { writer.releaseLock(); }
+}
+async function readStatus() {
+  const p = await connect(true);
+  if (!p) return;
+  await writeBytes(new Uint8Array([0x1b, 0x21, 0x3f])); // ESC ! ?  -> one status byte
+  const reader = p.readable.getReader();
+  let timer;
+  try {
+    const got = await Promise.race([reader.read(), new Promise(r => timer = setTimeout(() => r(null), 2500))]);
+    if (!got || !got.value || !got.value.length) { say("Printer connected, but it didn't report a status. That's normal for some models.", "info"); return; }
+    const b = got.value[0];
+    if (b === 0) { say("Printer is ready.", "ok"); return; }
+    const issues = [];
+    if (b & 1) issues.push("the lid is open"); if (b & 2) issues.push("paper is jammed"); if (b & 4) issues.push("it's out of labels");
+    if (b & 16) issues.push("it's paused"); if (b & 32) issues.push("it's printing");
+    say(`Printer says: ${issues.join(", ") || "status code " + b}.`, issues.length ? "warn" : "info");
+  } finally { clearTimeout(timer); try { await reader.cancel(); } catch {} reader.releaseLock(); }
+}
+$("statusBtn").onclick = () => readStatus().catch(e => say("Status check failed: " + esc(e.message), "err"));
+
+/* ---------------- TSPL ---------------- */
+const enc = new TextEncoder();
+function tsplJob(mono, copies) {
+  // mono: {w (dots, multiple of 8), h, bits:Uint8Array} with 1 = black
+  const L = labelDots();
+  const bytesPerRow = mono.w / 8;
+  const head = [
+    `SIZE ${L.wmm} mm,${L.hmm} mm`,
+    `GAP ${S.gap} mm,0 mm`,
+    `DIRECTION ${S.flip ? 1 : 0},0`,
+    `REFERENCE 0,0`,
+    `OFFSET 0 mm`,
+    `SET TEAR ON`,
+    `DENSITY ${Math.max(0, Math.min(15, S.density | 0))}`,
+    `SPEED ${Math.max(1, Math.min(6, S.speed | 0))}`,
+    `CLS`,
+    `BITMAP 0,0,${bytesPerRow},${mono.h},0,`
+  ].join("\r\n");
+  const tail = `\r\nPRINT 1,${Math.max(1, copies | 0)}\r\n`;
+  // TSPL BITMAP: bit 0 = burn (black), 1 = leave white. Most significant bit first.
+  const data = new Uint8Array(mono.bits.length);
+  for (let i = 0; i < data.length; i++) data[i] = ~mono.bits[i] & 0xff;
+  const a = enc.encode(head), c = enc.encode(tail);
+  const out = new Uint8Array(a.length + data.length + c.length);
+  out.set(a, 0); out.set(data, a.length); out.set(c, a.length + data.length);
+  return out;
+}
+
+/* ---------------- Image processing ---------------- */
+function lum(d, i) { return d[i + 3] < 128 ? 255 : (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000; }
+// Find the box around the printed content (ignores near-white).
+function contentBox(canvas) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const { width: w, height: h } = canvas, d = ctx.getImageData(0, 0, w, h).data;
+  const rowInk = new Uint32Array(h), colInk = new Uint32Array(w);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (lum(d, (y * w + x) * 4) < 200) { rowInk[y]++; colInk[x]++; }
+  const noise = 1; // ignore stray specks
+  let x0 = 0, x1 = w - 1, y0 = 0, y1 = h - 1;
+  while (y0 < h && rowInk[y0] <= noise) y0++; while (y1 > y0 && rowInk[y1] <= noise) y1--;
+  while (x0 < w && colInk[x0] <= noise) x0++; while (x1 > x0 && colInk[x1] <= noise) x1--;
+  if (y0 >= h || x0 >= w) return { x: 0, y: 0, w: 1, h: 1 };
+  const pad = Math.round(Math.max(w, h) * 0.006);
+  x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+  return { x: x0 / w, y: y0 / h, w: (x1 - x0 + 1) / w, h: (y1 - y0 + 1) / h };
+}
+function toMono(canvas, outW) {
+  // canvas already sized to label (w dots x h dots). Returns packed bits, 1 = black.
+  const w = canvas.width, h = canvas.height, bpr = outW / 8;
+  const d = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const bits = new Uint8Array(bpr * h), T = S.thresh;
+  if (S.dither === "1") {
+    const g = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) g[i] = lum(d, i * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, old = g[i], nw = old < T ? 0 : 255, err = old - nw;
+      if (nw === 0) bits[y * bpr + (x >> 3)] |= 0x80 >> (x & 7);
+      if (x + 1 < w) g[i + 1] += err * 7 / 16;
+      if (y + 1 < h) { if (x > 0) g[i + w - 1] += err * 3 / 16; g[i + w] += err * 5 / 16; if (x + 1 < w) g[i + w + 1] += err / 16; }
+    }
+  } else {
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (lum(d, (y * w + x) * 4) < T) bits[y * bpr + (x >> 3)] |= 0x80 >> (x & 7);
+  }
+  return { w: outW, h, bits };
+}
+function monoToCanvas(mono, canvas) {
+  canvas.width = mono.w; canvas.height = mono.h;
+  const ctx = canvas.getContext("2d"), img = ctx.createImageData(mono.w, mono.h), bpr = mono.w / 8;
+  for (let y = 0; y < mono.h; y++) for (let x = 0; x < mono.w; x++) {
+    const on = mono.bits[y * bpr + (x >> 3)] & (0x80 >> (x & 7)), i = (y * mono.w + x) * 4, v = on ? 0 : 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/* ---------------- Sources (PDF pages and images) ---------------- */
+let pdfjs = null;
+async function loadPdfJs() {
+  if (pdfjs) return pdfjs;
+  pdfjs = await import("./vendor/pdfjs/pdf.min.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("./vendor/pdfjs/pdf.worker.min.mjs", location.href).href;
+  return pdfjs;
+}
+// A source knows its size in points and can draw a region of itself onto a canvas.
+async function pdfSources(file) {
+  const lib = await loadPdfJs();
+  const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false, enableXfa: false }).promise;
+  const out = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n), vp = page.getViewport({ scale: 1 });
+    out.push({
+      name: doc.numPages > 1 ? `${file.name} · page ${n}` : file.name,
+      w: vp.width, h: vp.height,
+      async draw(canvas, region, scale) {
+        // Draw region (fractions of the page) at `scale` px per point onto canvas sized region*scale.
+        // Render the whole page on its own canvas (pdf.js sizes it), then copy the region across.
+        const s = Math.min(scale, 6000 / Math.max(vp.width, vp.height));
+        const v = page.getViewport({ scale: s });
+        const full = document.createElement("canvas");
+        full.width = Math.ceil(v.width); full.height = Math.ceil(v.height);
+        await page.render({ canvas: full, viewport: v, background: "#ffffff" }).promise;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = s !== scale; ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(full, region.x * full.width, region.y * full.height, region.w * full.width, region.h * full.height, 0, 0, canvas.width, canvas.height);
+        full.width = full.height = 0;
+      }
+    });
+  }
+  return out;
+}
+async function imageSource(file) {
+  const bmp = await createImageBitmap(file);
+  return [{
+    name: file.name, w: bmp.width, h: bmp.height,
+    async draw(canvas, region, scale) {
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(bmp, region.x * bmp.width, region.y * bmp.height, region.w * bmp.width, region.h * bmp.height, 0, 0, canvas.width, canvas.height);
+    }
+  }];
+}
+
+/* ---------------- Layout: crop, rotate, fit ---------------- */
+const CROPS = { auto: "Trim white edges", page: "Whole page", top: "Top half", bottom: "Bottom half", left: "Left half", right: "Right half" };
+const ROTS = { auto: "Turn automatically", 0: "No turn", 90: "Turn right", 270: "Turn left", 180: "Upside down" };
+function looksLikeLabel(src) { const r = src.w / src.h; return Math.abs(r - 2 / 3) < 0.015 || Math.abs(r - 3 / 2) < 0.03; }
+async function layout(item) {
+  const src = item.src, L = labelDots();
+  // 1. Work out the region to print.
+  let region = { x: 0, y: 0, w: 1, h: 1 };
+  const halves = { top: { x: 0, y: 0, w: 1, h: .5 }, bottom: { x: 0, y: .5, w: 1, h: .5 }, left: { x: 0, y: 0, w: .5, h: 1 }, right: { x: .5, y: 0, w: .5, h: 1 } };
+  if (halves[item.crop]) region = halves[item.crop];
+  if (item.crop !== "page") {
+    // Trim white space inside the chosen area.
+    const s = 700 / Math.max(region.w * src.w, region.h * src.h);
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(region.w * src.w * s)); c.height = Math.max(1, Math.round(region.h * src.h * s));
+    await src.draw(c, region, s);
+    const b = contentBox(c);
+    region = { x: region.x + b.x * region.w, y: region.y + b.y * region.h, w: b.w * region.w, h: b.h * region.h };
+  }
+  // 2. Turn it so it fills the label best.
+  const rw = region.w * src.w, rh = region.h * src.h;
+  let rot = item.rot === "auto" ? ((rw > rh) !== (L.w > L.h) ? 90 : 0) : Number(item.rot);
+  const turned = rot === 90 || rot === 270;
+  // 3. Fit inside the label minus margin.
+  const m = Math.round(S.margin * DPMM);
+  const boxW = L.w - 2 * m, boxH = L.h - 2 * m;
+  const fw = turned ? rh : rw, fh = turned ? rw : rh;
+  const scale = Math.min(boxW / fw, boxH / fh); // label dots per source unit
+  const cw = Math.max(1, Math.round(rw * scale)), ch = Math.max(1, Math.round(rh * scale));
+  const piece = document.createElement("canvas"); piece.width = cw; piece.height = ch;
+  await src.draw(piece, region, scale);
+  // 4. Place on the label (centred), applying nudges.
+  const outW = L.bytes * 8;
+  const label = document.createElement("canvas"); label.width = outW; label.height = L.h;
+  const ctx = label.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, outW, L.h);
+  const pw = turned ? ch : cw, ph = turned ? cw : ch;
+  const ox = Math.round((L.w - pw) / 2 + S.nudgeX * DPMM), oy = Math.round((L.h - ph) / 2 + S.nudgeY * DPMM);
+  ctx.save(); ctx.translate(ox + pw / 2, oy + ph / 2); ctx.rotate(rot * Math.PI / 180);
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(piece, -cw / 2, -ch / 2); ctx.restore();
+  return toMono(label, outW);
+}
+
+/* ---------------- Queue ---------------- */
+let items = [], nextId = 1;
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+async function addFiles(files, kind) {
+  const newItems = [];
+  if (!files.length) return newItems;
+  say(`Opening ${files.length} file${files.length > 1 ? "s" : ""}…`, "info");
+  let added = 0, failed = [];
+  for (const f of files) {
+    try {
+      const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+      const srcs = isPdf ? await pdfSources(f) : await imageSource(f);
+      for (const src of srcs) {
+        const asIs = kind === "pack" || looksLikeLabel(src);
+        const it = { id: nextId++, src, crop: asIs ? "page" : "auto", rot: kind === "pack" ? "0" : "auto", copies: 1, on: true, done: false, mono: null, kind };
+        items.push(it); newItems.push(it); added++;
+        drawQueue(); await renderItem(it);
+      }
+    } catch (e) { console.error(e); failed.push(f.name); }
+  }
+  say(failed.length ? `Couldn't open: ${failed.map(esc).join(", ")}. Is it a PDF or picture?` : `Added ${added} label${added === 1 ? "" : "s"}. Check the previews, then tap Print.`, failed.length ? "err" : "ok");
+  return newItems;
+}
+async function renderItem(it) {
+  try { it.mono = await layout(it); it.err = null; } catch (e) { console.error(e); it.err = e.message || String(e); it.mono = null; }
+  const card = document.querySelector(`[data-id="${it.id}"]`);
+  if (card) { const cv = card.querySelector("canvas"); if (it.mono) monoToCanvas(it.mono, cv); }
+}
+async function rerenderAll() { for (const it of items) await renderItem(it); drawQueue(); }
+function drawQueue() {
+  const q = $("queue");
+  $("empty").hidden = items.length > 0;
+  $("queueBar").hidden = items.length === 0;
+  const chosen = items.filter(i => i.on), sheets = toPrint().reduce((n, i) => n + i.copies, 0);
+  $("queueInfo").textContent = `${items.length} label${items.length === 1 ? "" : "s"} · ${chosen.length} selected`;
+  $("printBtn").disabled = busy || sheets === 0;
+  $("printBtn").textContent = busy ? "Printing…" : sheets ? `🖨️ Print ${sheets} label${sheets === 1 ? "" : "s"}` : "🖨️ Print";
+  const have = new Set(items.map(i => String(i.id)));
+  for (const el of [...q.children]) if (!have.has(el.dataset.id)) el.remove();
+  for (const it of items) {
+    let el = q.querySelector(`[data-id="${it.id}"]`);
+    if (!el) {
+      el = document.createElement("div"); el.className = "item"; el.dataset.id = it.id;
+      el.innerHTML = `<input type="checkbox" class="sel" aria-label="Include in print">
+        <canvas width="816" height="1218"></canvas>
+        <div class="name"></div>
+        <div class="row"><select class="crop">${Object.entries(CROPS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+        <div class="row"><select class="rot">${Object.entries(ROTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+        <div class="row"><div class="stepper"><button class="minus" aria-label="Fewer copies">−</button><span class="n"></span><button class="plus" aria-label="More copies">+</button></div>
+          <span class="grow" style="flex:1"></span><button class="btn small one">Print</button><button class="btn small del" aria-label="Remove">✕</button></div>`;
+      q.appendChild(el);
+      el.querySelector(".sel").onchange = e => { it.on = e.target.checked; drawQueue(); };
+      el.querySelector(".crop").onchange = async e => { it.crop = e.target.value; await renderItem(it); };
+      el.querySelector(".rot").onchange = async e => { it.rot = e.target.value; await renderItem(it); };
+      el.querySelector(".minus").onclick = () => { it.copies = Math.max(1, it.copies - 1); drawQueue(); };
+      el.querySelector(".plus").onclick = () => { it.copies = Math.min(50, it.copies + 1); drawQueue(); };
+      el.querySelector(".del").onclick = () => { items = items.filter(x => x !== it); drawQueue(); };
+      el.querySelector(".one").onclick = () => printItems([it]);
+      if (it.mono) monoToCanvas(it.mono, el.querySelector("canvas"));
+    }
+    el.querySelector(".sel").checked = it.on;
+    el.querySelector(".crop").value = it.crop;
+    el.querySelector(".rot").value = it.rot;
+    el.querySelector(".n").textContent = `×${it.copies}`;
+    el.querySelector(".name").textContent = (it.kind === "pack" ? "📋 " : "") + it.src.name;
+    el.querySelector(".name").title = it.src.name;
+    el.querySelector(".one").disabled = busy;
+    el.classList.toggle("off", !it.on);
+    el.classList.toggle("done", it.done);
+    let b = el.querySelector(".badge");
+    if (it.done && !b) { b = document.createElement("span"); b.className = "badge"; b.textContent = "Printed ✓"; el.appendChild(b); }
+    if (!it.done && b) b.remove();
+  }
+}
+
+/* ---------------- Printing ---------------- */
+async function printItems(list) {
+  if (busy || !list.length) return;
+  if (!serialSupported()) { unsupportedHelp(); return; }
+  busy = true; drawQueue(); say("");
+  const total = list.reduce((n, i) => n + i.copies, 0);
+  $("progressWrap").hidden = false; $("progress").value = 0;
+  let sent = 0;
+  try {
+    const p = await connect(true);
+    if (!p) throw new Error("Printer not connected");
+    setStatus("Printing…", "busy");
+    for (const it of list) {
+      if (!it.mono) await renderItem(it);
+      if (!it.mono) throw new Error(`"${it.src.name}" couldn't be prepared`);
+      $("progressText").textContent = `Sending ${it.src.name} (${sent + 1}–${sent + it.copies} of ${total})…`;
+      const job = tsplJob(it.mono, it.copies);
+      await writeBytes(job, f => $("progress").value = (sent + f * it.copies) / total);
+      sent += it.copies; it.done = true; drawQueue();
+      await new Promise(r => setTimeout(r, 250));
+    }
+    $("progress").value = 1;
+    say(`Sent ${total} label${total === 1 ? "" : "s"} to the printer.`, "ok");
+  } catch (e) {
+    console.error(e);
+    port = null; setStatus("Not connected", "err");
+    say(`Printing stopped after ${sent} of ${total}: ${esc(e.message || e)}. The labels already printed are ticked; tap Print to send the rest.`, "err");
+  } finally {
+    busy = false; if (port) setStatus("Connected", "on");
+    setTimeout(() => $("progressWrap").hidden = true, 1500);
+    drawQueue();
+  }
+}
+// Selected labels not yet printed; if every selected one is printed, print them all again.
+function toPrint() { const sel = items.filter(i => i.on), left = sel.filter(i => !i.done); return left.length ? left : sel; }
+$("printBtn").onclick = () => printItems(toPrint());
+$("addBtn").onclick = () => $("fileIn").click();
+$("packBtn").onclick = () => $("packIn").click();
+$("fileIn").onchange = e => { addFiles([...e.target.files], "label"); e.target.value = ""; };
+$("packIn").onchange = e => { addFiles([...e.target.files], "pack"); e.target.value = ""; };
+$("selAllBtn").onclick = () => { const all = items.every(i => i.on); items.forEach(i => i.on = !all); drawQueue(); };
+$("clearDoneBtn").onclick = () => { items = items.filter(i => !i.done); drawQueue(); };
+$("clearBtn").onclick = () => { items = []; drawQueue(); say(""); };
+
+/* Test label: border 2 mm in, corner marks, text. */
+function testLabel() {
+  const L = labelDots(), outW = L.bytes * 8;
+  const c = document.createElement("canvas"); c.width = outW; c.height = L.h;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, outW, L.h);
+  x.save(); x.translate(Math.round(S.nudgeX * DPMM), Math.round(S.nudgeY * DPMM));
+  x.strokeStyle = "#000"; x.lineWidth = 4; x.strokeRect(16, 16, L.w - 32, L.h - 32);
+  x.fillStyle = "#000"; x.font = "bold 56px sans-serif"; x.textAlign = "center";
+  x.fillText("TEST PRINT", L.w / 2, L.h * 0.3);
+  x.font = "32px sans-serif";
+  x.fillText(`${L.wmm} x ${L.hmm} mm  ·  ${L.w} x ${L.h} dots`, L.w / 2, L.h * 0.3 + 60);
+  x.fillText("Border should be 2 mm in from every edge", L.w / 2, L.h * 0.3 + 110);
+  x.fillText("▲ This edge comes out first? Then it's upright", L.w / 2, 80);
+  for (let i = 0; i < 20; i++) x.fillRect(L.w / 2 - 200 + i * 20, L.h * 0.55, i % 3 ? 6 : 12, 160);
+  x.restore();
+  return toMono(c, outW);
+}
+$("testBtn").onclick = () => printItems([{ src: { name: "Test print" }, mono: testLabel(), copies: 1 }]);
+
+/* ---------------- Labels shared from other apps (Android share menu) ---------------- */
+// sw.js receives the shared files, keeps them in IndexedDB and opens ./?shared=1.
+function idb() {
+  return new Promise((res, rej) => { const r = indexedDB.open("label-printer", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("shared", { autoIncrement: true });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+async function takeSharedFiles() {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction("shared", "readwrite"), st = tx.objectStore("shared"), out = [];
+    st.openCursor().onsuccess = e => { const c = e.target.result; if (c) { out.push(c.value); c.continue(); } };
+    tx.oncomplete = () => { const t2 = db.transaction("shared", "readwrite"); t2.objectStore("shared").clear(); t2.oncomplete = () => res(out); };
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function handleShared() {
+  let recs = [];
+  try { recs = await takeSharedFiles(); } catch (e) { console.error(e); }
+  history.replaceState(null, "", location.pathname);
+  const files = recs.map(r => r.file instanceof File ? r.file : new File([r.file], r.name || "shared label", { type: r.type || r.file.type }));
+  if (!files.length) { say("Nothing was received from the share. Try saving the label and tapping Add labels.", "warn"); return; }
+  const added = await addFiles(files, "label");
+  if (S.autoPrint && added.length && serialSupported() && (port || await knownPort())) await printItems(added);
+}
+
+/* ---------------- Start ---------------- */
+drawQueue();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(e => console.warn("Service worker:", e));
+(async () => {
+  const shared = new URLSearchParams(location.search).has("shared");
+  if (!serialSupported()) setStatus("Use Chrome on Android", "err");
+  else {
+    const p = await knownPort();
+    if (p) { setStatus("Printer remembered", ""); $("connectBtn").textContent = "Connect"; }
+    else $("setupCard").open = true;
+  }
+  if (shared) await handleShared();
+})();
+window.__labelPrinter = { tsplJob, layout, items: () => items, labelDots, S };
+</script>
+</body>
+</html>
