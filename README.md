@@ -55,6 +55,9 @@ In TSPL `BITMAP` data a **0 bit burns (black)** and a 1 bit stays white, most si
 
 Run the tests: `pip install playwright reportlab pillow && python3 test/make_fixtures.py && python3 test/run_test.py`
 
+## Releasing a change
+Bump `APP_VERSION` in `index.html` (and the `CACHE` name in `sw.js`) on every change, so the app's **Check for updates** button sees the new version.
+
 ## Ideas for later
 - Send labels straight from Outlet Analytics (packing list "Print to label printer" button).
 - Split A4 sheets with 4 labels per page.
