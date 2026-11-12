@@ -92,7 +92,7 @@ input[type=file]{display:none}
   <div id="progressWrap" class="card" hidden><div id="progressText" class="hint" style="margin-top:0"></div><progress id="progress" value="0" max="1"></progress></div>
 
   <div class="queue" id="queue"></div>
-  <div class="empty" id="empty"><strong>No labels yet</strong>Tap <b>Add labels</b> and pick your shipping label PDFs from Shopify, eBay or Royal Mail Click &amp; Drop. You can pick several at once; every page becomes one 4x6 label.</div>
+  <div class="empty" id="empty"><strong>No labels yet</strong>Tap <b>Add labels</b> and pick your shipping label PDFs from Shopify, eBay or Royal Mail Click &amp; Drop. You can pick several at once; every page becomes one 4x6 label.<div class="bar" style="justify-content:center;margin:14px 0 0"><button class="btn" id="sampleBtn">🧪 Try with sample labels</button></div></div>
 
   <div style="height:16px"></div>
 
@@ -117,6 +117,8 @@ input[type=file]{display:none}
       <li>In the print screen choose <b>Save as PDF</b> as the printer and save it.</li>
       <li>Here, tap <b>Add packing list</b> and pick that PDF. Long lists print over several labels, in order.</li>
     </ol>
+    <div class="bar"><button class="btn" id="samplePackBtn">🧪 Add a sample packing list</button></div>
+    <p class="hint">The sample is made-up stock, laid out like the Outlet Analytics packing list, so you can test without real orders.</p>
   </details>
 
   <details class="card">
@@ -631,6 +633,89 @@ function drawQueue() {
     if (!it.done && b) b.remove();
   }
 }
+
+/* ---------------- Samples (made-up data for testing) ---------------- */
+function canvasSource(name, c) {
+  return { name, w: c.width, h: c.height,
+    async draw(canvas, region, scale) {
+      const ctx = canvas.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(c, region.x * c.width, region.y * c.height, region.w * c.width, region.h * c.height, 0, 0, canvas.width, canvas.height);
+    } };
+}
+function blankLabel() {
+  const c = document.createElement("canvas"); c.width = 812; c.height = 1218;
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.fillStyle = "#000"; x.strokeStyle = "#000";
+  return [c, x];
+}
+function fakeBarcode(x, left, top, width, height, seed) {
+  let r = seed; const rnd = () => (r = (r * 9301 + 49297) % 233280) / 233280;
+  for (let px = left; px < left + width;) { const w = 3 + Math.floor(rnd() * 4) * 3; if (rnd() > .45) x.fillRect(px, top, w, height); px += w + 3; }
+}
+const SAMPLE_STOCK = [
+  ["T001", "2 pin waterproof connector kit, 10 sets", "eBay 2"], ["T003", "3 pin Superseal plug and socket", "eBay 1 · Shop 1"],
+  ["T004", "4 pin Deutsch DT connector", "Amz 3"], ["T007", "6 pin Sumitomo HM loom plug", "eBay 1"],
+  ["T009", "Fuel injector connector EV1 pigtail", "eBay 4"], ["T012", "Headlight H4 socket with wire", "Shop 2"],
+  ["T013", "Ignition coil plug repair lead", "eBay 1 · Amz 1"], ["T015", "O2 lambda sensor 4 wire plug", "eBay 2"],
+  ["T018", "Bosch EV6 injector clip, pack of 6", "Amz 1"], ["T021", "Trailer 7 pin socket, 12N", "eBay 1"],
+  ["T022", "Crank sensor 3 pin pigtail", "Shop 1"], ["T024", "MAF sensor 5 pin connector", "eBay 2"],
+  ["T026", "Throttle body 6 pin repair plug", "eBay 1"], ["T028", "Fog light H11 socket pair", "Amz 2 · Shop 1"],
+  ["T030", "Reverse light switch 2 pin lead", "eBay 1"], ["T031", "Coolant temp sensor 2 pin plug", "eBay 3"],
+  ["T033", "Junior Timer 2 pin connector", "Amz 1"], ["T035", "ABS sensor plug, 2 wire", "eBay 2"],
+  ["T036", "Window motor 2 pin repair lead", "Shop 1"], ["T038", "Indicator bulb holder PY21W", "eBay 1"],
+  ["T040", "Number plate lamp plug pair", "eBay 2"], ["T041", "Horn connector, 2 spade", "Amz 1"],
+  ["T043", "Glow plug harness repair kit", "eBay 1"], ["T045", "Map sensor 3 pin pigtail", "eBay 1 · Shop 1"],
+  ["T047", "Seat belt buckle 2 pin plug", "eBay 1"], ["T049", "EGR valve 6 pin connector", "Amz 2"],
+  ["T050", "Alternator 2 pin plug lead", "eBay 1"], ["T052", "Radiator fan 2 pin connector", "eBay 2"]
+];
+function samplePackingPages() {
+  const rows = SAMPLE_STOCK.map(([sku, title, ch]) => ({ sku, title, ch, qty: ch.split("·").reduce((n, p) => n + Number(p.trim().split(" ")[1] || 0), 0) }));
+  const units = rows.reduce((n, r) => n + r.qty, 0);
+  const when = new Date().toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const perPage = 15, pages = [];
+  for (let i = 0; i < rows.length; i += perPage) {
+    const [c, x] = blankLabel(); const pg = pages.length + 1, of = Math.ceil(rows.length / perPage);
+    x.font = "bold 44px sans-serif"; x.fillText("Packing list", 24, 60);
+    x.font = "26px sans-serif"; x.fillText(`${when} · ${rows.length} items · ${units} units · page ${pg} of ${of}`, 24, 100);
+    x.font = "italic 24px sans-serif"; x.fillText("SAMPLE DATA, for testing the printer", 24, 134);
+    x.fillRect(24, 150, 764, 3);
+    rows.slice(i, i + perPage).forEach((r, k) => {
+      const y = 175 + k * 68;
+      x.lineWidth = 3; x.strokeRect(24, y + 6, 34, 34);
+      x.font = "bold 30px sans-serif"; x.fillText(r.sku, 74, y + 34); x.fillText(`×${r.qty}`, 180, y + 34);
+      x.font = "26px sans-serif"; let t = r.title; while (x.measureText(t).width > 520 && t.length > 4) t = t.slice(0, -2); if (t !== r.title) t += "…";
+      x.fillText(t, 262, y + 28); x.font = "21px sans-serif"; x.fillText(r.ch, 262, y + 54);
+      x.fillRect(24, y + 64, 764, 1);
+    });
+    pages.push(canvasSource(`Sample packing list · page ${pg}`, c));
+  }
+  return pages;
+}
+function sampleShippingLabel() {
+  const [c, x] = blankLabel();
+  x.lineWidth = 4; x.strokeRect(14, 14, 784, 1190);
+  x.font = "bold 46px sans-serif"; x.fillText("SAMPLE LABEL", 40, 80);
+  x.font = "24px sans-serif"; x.fillText("Not a real postage label. For testing only.", 40, 118);
+  x.fillRect(14, 140, 784, 3);
+  x.font = "bold 28px sans-serif"; x.fillText("DELIVER TO:", 40, 190);
+  x.font = "34px sans-serif"; ["A. Customer", "1 Sample Street", "Testville", "TE5 7ST"].forEach((l, i) => x.fillText(l, 40, 240 + i * 46));
+  x.font = "bold 28px sans-serif"; x.fillText("FROM:", 40, 470); x.font = "26px sans-serif"; x.fillText("Returns, 2 Example Lane, Sampleton SA1 1PL", 40, 506);
+  x.fillRect(14, 540, 784, 3);
+  x.font = "bold 120px sans-serif"; x.fillText("48", 600, 680); x.font = "24px sans-serif"; x.fillText("Weight 0.4 kg · Parcel 1 of 1", 40, 600);
+  fakeBarcode(x, 60, 760, 690, 220, 42);
+  x.font = "30px monospace"; x.fillText("XX 0000 0000 0SA", 220, 1020);
+  x.font = "22px sans-serif"; x.fillText("If this prints sharp and fills the label, real labels will too.", 40, 1150);
+  return canvasSource("Sample shipping label", c);
+}
+async function addSamples(srcs, kind) {
+  for (const src of srcs) {
+    const it = { id: nextId++, src, crop: "page", rot: "0", copies: 1, on: true, done: false, mono: null, kind };
+    items.push(it); drawQueue(); await renderItem(it);
+  }
+  say(`Added ${srcs.length} sample label${srcs.length === 1 ? "" : "s"}. They're made-up data, so they're safe to print. Tap Print to try.`, "ok");
+}
+$("sampleBtn").onclick = () => addSamples([sampleShippingLabel(), ...samplePackingPages()], "label").then(() => items.slice(-2).forEach(i => i.kind = "pack")).then(drawQueue);
+$("samplePackBtn").onclick = () => addSamples(samplePackingPages(), "pack");
 
 /* ---------------- Printing ---------------- */
 async function printItems(list) {
