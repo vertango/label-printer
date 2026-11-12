@@ -168,9 +168,14 @@ const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
 const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
 const DEFAULTS = {v:2, smooth:true, method:"zlib", link:"serial", bleId:null, size:"101.6x152.4", gap:3, density:5, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
 let S = {...DEFAULTS};
-try { Object.assign(S, JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}")); } catch {}
-// v2: darkness default changed from 10 to 5 to match the Jadens app (only if it was never changed from 10).
-if ((S.v || 0) < 2) { if (S.density === 10) S.density = 5; S.v = 2; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {} }
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}") || {}; } catch {}
+Object.assign(S, saved);
+// v2: darkness default changed from 10 to 5 to match the Jadens app (only if it was still at the old 10).
+if (Object.keys(saved).length && (saved.v || 0) < 2) {
+  if (saved.density === undefined || saved.density === 10) S.density = 5;
+  S.v = 2; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
+}
 const $ = id => document.getElementById(id);
 const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sMethod:"method", sSmooth:"smooth", sAuto:"autoPrint"};
 // Position nudges are drop-downs (tablet number keypads have no minus key).
