@@ -34,6 +34,8 @@ CLS
 BITMAP 0,0,102,1219,0,<raw 1-bit rows>
 PRINT 1,<copies>
 ```
+**Fast sending** (on by default): Bluetooth serial only manages a few tens of KB/s, so instead of one 122 KB `BITMAP`, each label is sent as `BAR x,y,w,h` rectangles for solid areas (barcode bars, borders) plus small cropped `BITMAP`s for text and pictures, skipping blank areas. Shipping labels shrink about 6x, packing lists about 2x; `test/fast_test.py` checks the printed dots are identical to the full-picture method. It can be turned off in Settings.
+
 In TSPL `BITMAP` data a **0 bit burns (black)** and a 1 bit stays white, most significant bit first. Status: send `ESC ! ?` (`1B 21 3F`), the printer replies with one byte (0 = ready; 1 lid open, 2 jam, 4 out of paper, 16 paused, 32 printing).
 
 ## Files
