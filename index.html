@@ -90,7 +90,13 @@ input[type=file]{display:none}
     <button class="btn small" id="clearDoneBtn">Remove printed</button>
     <button class="btn small" id="clearBtn">Clear all</button>
   </div>
-  <div id="progressWrap" class="card" hidden><div id="progressText" class="hint" style="margin-top:0"></div><progress id="progress" value="0" max="1"></progress></div>
+  <div id="progressWrap" class="card" hidden><div id="progressText" class="hint" style="margin-top:0"></div><progress id="progress" value="0" max="1"></progress>
+    <div class="bar" id="ctlBar" style="margin:12px 0 0">
+      <button class="btn small" id="pauseBtn">⏸ Pause</button>
+      <button class="btn small" id="resumeBtn">▶ Resume</button>
+      <button class="btn small" id="cancelBtn">✕ Cancel the rest</button>
+      <span class="grow"></span><button class="btn small" id="hideCtlBtn">Hide</button>
+    </div></div>
 
   <div class="queue" id="queue"></div>
   <div class="empty" id="empty"><strong>No labels yet</strong>Tap <b>Add labels</b> and pick your shipping label PDFs from Shopify, eBay or Royal Mail Click &amp; Drop. You can pick several at once; every page becomes one 4x6 label.<div class="bar" style="justify-content:center;margin:14px 0 0"><button class="btn" id="sampleBtn">🧪 Try with sample labels</button></div></div>
@@ -834,7 +840,7 @@ async function printItems(list) {
   if (!anySupported()) { unsupportedHelp(); return; }
   busy = true; drawQueue(); say("");
   const total = list.reduce((n, i) => n + i.copies, 0);
-  $("progressWrap").hidden = false; $("progress").value = 0;
+  clearTimeout(ctlTimer); $("progressWrap").hidden = false; $("progress").value = 0;
   let sent = 0;
   try {
     const p = await connect(true);
@@ -862,6 +868,7 @@ async function printItems(list) {
     drawQueue();
     lastSendInfo = `${Math.round(stream.length / 1024)} KB in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
     $("progress").value = 1;
+    $("progressText").textContent = `Sent to the printer. Pause or cancel here while it prints:`;
     say(`Sent ${total} label${total === 1 ? "" : "s"} to the printer <span class="hint">(${lastSendInfo})</span>.`, "ok");
   } catch (e) {
     console.error(e);
@@ -869,10 +876,25 @@ async function printItems(list) {
     say(`Printing stopped after ${sent} of ${total}: ${esc(e.message || e)}. The labels already printed are ticked; tap Print to send the rest.`, "err");
   } finally {
     busy = false; if (link) setStatus(link.kind === "ble" ? "Connected (BLE)" : "Connected", "on");
-    setTimeout(() => $("progressWrap").hidden = true, 1500);
+    // Keep the printer controls (pause / resume / cancel) on screen for 2 minutes after sending.
+    clearTimeout(ctlTimer); ctlTimer = setTimeout(() => $("progressWrap").hidden = true, 120000);
     drawQueue();
   }
 }
+/* Printer controls. The whole batch reaches the printer within a second or two and waits in its
+   memory, so these are sent to the printer itself (TSPL immediate commands):
+   ESC ! P = pause, ESC ! O = resume, ESC ! . = cancel what's left in the printer. */
+let ctlTimer = null;
+async function printerControl(bytes, done) {
+  if (busy) { say("Wait a moment, still sending…", "info"); return; }
+  try { await writeBytes(new Uint8Array(bytes)); say(done, "ok"); }
+  catch (e) { say("Couldn't reach the printer: " + esc(e.message || e), "err"); }
+}
+$("pauseBtn").onclick = () => printerControl([0x1b, 0x21, 0x50], "Pause sent. The printer stops after the label it's on. Tap Resume to carry on.");
+$("resumeBtn").onclick = () => printerControl([0x1b, 0x21, 0x4f], "Resume sent.");
+$("cancelBtn").onclick = () => printerControl([0x1b, 0x21, 0x2e], "Cancel sent. Labels not yet printed are dropped. You may need to tap Resume or press the printer's button if it was paused.");
+$("hideCtlBtn").onclick = () => { clearTimeout(ctlTimer); $("progressWrap").hidden = true; };
+
 // Selected labels not yet printed; if every selected one is printed, print them all again.
 function toPrint() { const sel = items.filter(i => i.on), left = sel.filter(i => !i.done); return left.length ? left : sel; }
 $("printBtn").onclick = () => printItems(toPrint());
