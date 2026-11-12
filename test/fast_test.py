@@ -9,7 +9,7 @@ from run_test import MOCK, ROOT, FIX, OUT, render_jobs
 def render_imgs(raw): return [img for img, _ in render_jobs(raw)]
 
 async def run_once(pg, method):
-    await pg.evaluate(f"(()=>{{const s=JSON.parse(localStorage.getItem('labelPrinter.settings')||'{{}}');s.method=\'{method}\';localStorage.setItem('labelPrinter.settings',JSON.stringify(s));}})()")
+    await pg.evaluate(f"(()=>{{const s=JSON.parse(localStorage.getItem('labelPrinter.settings')||'{{}}');s.v=3;s.method=\'{method}\';s.style=\'{"jadens" if method=="jadens" else "standard"}\';localStorage.setItem('labelPrinter.settings',JSON.stringify(s));}})()")
     await pg.goto("http://127.0.0.1:8770/index.html")
     await pg.set_input_files("#fileIn", [str(FIX / f) for f in ["clickdrop_a4.pdf", "a4_label_only.pdf", "ebay_4x6_two.pdf", "shopify_6x4_landscape.pdf", "label_image.png"]])
     await pg.wait_for_function("document.querySelectorAll('.item').length===6 && !/Opening/.test(document.getElementById('msg').textContent)", timeout=60000)
@@ -40,6 +40,12 @@ async def main():
         slow, slow_t, ts = await run_once(pg, "plain")
         rects, rects_t, _ = await run_once(pg, "rects")
         fast, fast_t, tf = await run_once(pg, "zlib")
+        jad, jad_t, _ = await run_once(pg, "jadens")
+        ja = render_imgs(jad) + render_imgs(jad_t)
+        pa = render_imgs(slow) + render_imgs(slow_t); jad_same = len(ja) == len(pa) and all(ImageChops.difference(x.convert("L"), y.convert("L")).getbbox() is None for x, y in zip(pa, ja))
+        first = jad[:jad.index(b"BITMAP")].decode(); tail = jad[jad.index(b"\r\n\r\nSPEED"):][:40]
+        print("Jadens-style identical to plain:", jad_same, f"({len(jad+jad_t)//1024} KB)")
+        print("Jadens-style job starts:", repr(first)); print("and ends:", repr(tail))
         ra, rb_ = render_imgs(slow) + render_imgs(slow_t), render_imgs(rects) + render_imgs(rects_t)
         rect_same = all(ImageChops.difference(x.convert("L"), y.convert("L")).getbbox() is None for x, y in zip(ra, rb_))
         print("rectangles method identical to plain:", rect_same, f"({len(rects+rects_t)//1024} KB)")
@@ -58,7 +64,7 @@ async def main():
         print(f"total: {len(slow+slow_t)//1024} KB -> {len(fast+fast_t)//1024} KB")
         b[-1].save(OUT / "fast_test_print.png")
         print("page errors:", errs or "none")
-        print("ALL IDENTICAL" if ok and rect_same else "MISMATCH")
+        print("ALL IDENTICAL" if ok and rect_same and jad_same else "MISMATCH")
         await br.close()
     srv.shutdown()
 

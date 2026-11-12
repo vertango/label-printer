@@ -133,8 +133,8 @@ input[type=file]{display:none}
     <div class="grid" style="margin-top:10px">
       <label>Label size
         <select id="sSize">
-          <option value="101.6x152.4">4 x 6 in (shipping)</option>
-          <option value="100x150">100 x 150 mm</option>
+          <option value="100x150">100 x 150 mm (4x6 shipping, as Jadens app)</option>
+          <option value="101.6x152.4">4 x 6 in exact (101.6 x 152.4 mm)</option>
           <option value="101.6x101.6">4 x 4 in</option>
           <option value="101.6x76.2">4 x 3 in</option>
           <option value="57x32">57 x 32 mm</option>
@@ -149,13 +149,18 @@ input[type=file]{display:none}
       <label>Move print left / right<select id="sNudgeX"></select></label>
       <label>Move print up / down<select id="sNudgeY"></select></label>
       <label class="check"><input id="sFlip" type="checkbox"> Print upside down</label>
-      <label>Sending method
+      <label>Printer commands
+        <select id="sStyle">
+          <option value="jadens">Same as the Jadens app (recommended)</option>
+          <option value="standard">Standard TSPL (uses the options below)</option>
+        </select></label>
+      <label>Sending method (Standard only)
         <select id="sMethod">
           <option value="zlib">Compressed, same as the Jadens app (fastest)</option>
           <option value="rects">Rectangles</option>
           <option value="plain">Plain picture (slowest, most compatible)</option>
         </select></label>
-      <label class="check"><input id="sSmooth" type="checkbox"> Print batches without stopping (turn off if labels in a batch go out of line)</label>
+      <label class="check"><input id="sSmooth" type="checkbox"> Print batches without stopping (Standard only)</label>
       <label class="check"><input id="sAuto" type="checkbox"> Print as soon as a label is shared to this app</label>
     </div>
     <p class="hint">Settings are kept on this tablet.</p>
@@ -173,7 +178,7 @@ input[type=file]{display:none}
 /* ---------------- Settings ---------------- */
 const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
 const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
-const DEFAULTS = {v:2, smooth:true, method:"zlib", link:"serial", bleId:null, size:"101.6x152.4", gap:3, density:5, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
+const DEFAULTS = {v:3, style:"jadens", smooth:true, method:"zlib", link:"serial", bleId:null, size:"100x150", gap:3, density:5, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
 let S = {...DEFAULTS};
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}") || {}; } catch {}
@@ -183,8 +188,13 @@ if (Object.keys(saved).length && (saved.v || 0) < 2) {
   if (saved.density === undefined || saved.density === 10) S.density = 5;
   S.v = 2; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
 }
+// v3: match the Jadens app: 100 x 150 mm labels and its exact commands.
+if (Object.keys(saved).length && (S.v || 0) < 3) {
+  if (!saved.size || saved.size === "101.6x152.4") S.size = "100x150";
+  S.style = "jadens"; S.v = 3; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
+}
 const $ = id => document.getElementById(id);
-const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sMethod:"method", sSmooth:"smooth", sAuto:"autoPrint"};
+const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sMethod:"method", sStyle:"style", sSmooth:"smooth", sAuto:"autoPrint"};
 // Position nudges are drop-downs (tablet number keypads have no minus key).
 for (const [id, neg, pos] of [["sNudgeX", "left", "right"], ["sNudgeY", "up", "down"]]) {
   const el = $(id);
@@ -446,13 +456,15 @@ function bitmapPart(mono, y0, y1, c0, c1) {
 // Compressed picture, the way the Jadens app sends it: BITMAP x,y,width,height,3,length,<zlib data>.
 // Mode 3 data is zlib with a small 1 KB window (what the printer expects), and here 1 = black.
 // A shipping label shrinks from ~122 KB to ~9 KB.
-function zlibPart(mono) {
-  // Only send rows from the first to the last inked row.
+function zlibPart(mono, fullHeight = false) {
+  // Only send rows from the first to the last inked row (or the whole label, as the Jadens app does).
   const bpr = mono.w / 8; let top = 0, bottom = mono.h - 1;
   const rowEmpty = y => { for (let c = 0; c < bpr; c++) if (mono.bits[y * bpr + c]) return false; return true; };
-  while (top < mono.h && rowEmpty(top)) top++;
-  while (bottom > top && rowEmpty(bottom)) bottom--;
-  if (top >= mono.h) return new Uint8Array(0);
+  if (!fullHeight) {
+    while (top < mono.h && rowEmpty(top)) top++;
+    while (bottom > top && rowEmpty(bottom)) bottom--;
+    if (top >= mono.h) return new Uint8Array(0);
+  }
   const rows = mono.bits.subarray(top * bpr, (bottom + 1) * bpr);
   const packed = window.pako.deflate(rows, { level: 6, windowBits: 10, memLevel: 8 });
   return concatBytes([enc.encode(`BITMAP 0,${top},${bpr},${bottom - top + 1},3,${packed.length},`), packed, enc.encode("\r\n")]);
@@ -462,6 +474,17 @@ function tsplJob(mono, copies, opts = {}) {
   // opts.first: send the setup lines (size, gap, darkness…); later labels in a batch skip them.
   // opts.last:  feed this label out to the tear bar. Earlier labels in a batch stay put, so the
   //             printer doesn't push each one out and pull the paper back before the next.
+  if (S.style !== "standard" && window.pako) {
+    // Exactly what the Jadens app sends for each label (recorded from its Bluetooth traffic):
+    // SIZE, DIRECTION, SET GAP ON (printer finds the gap itself), CLS, SETCOLOR BLACK,
+    // compressed BITMAP of the whole label, then SPEED, DENSITY, PRINT.
+    const L = labelDots(), num = v => String(+v.toFixed(2));
+    return concatBytes([
+      enc.encode(`SIZE ${num(L.wmm)} mm,${num(L.hmm)} mm\r\nDIRECTION ${S.flip ? 1 : 0},0\r\nSET GAP ON\r\nCLS\r\nSETCOLOR BLACK\r\n`),
+      zlibPart(mono, true),
+      enc.encode(`\r\nSPEED ${Math.max(1, Math.min(6, S.speed | 0))}\r\nDENSITY ${Math.max(0, Math.min(15, S.density | 0))}\r\nPRINT 1,${Math.max(1, copies | 0)}\r\n`)
+    ]);
+  }
   const first = opts.first !== false, last = opts.last !== false;
   const parts = [enc.encode(first ? tsplHeader() : "CLS\r\n")];
   const method = S.method === "plain" || S.method === "rects" ? S.method : (window.pako ? "zlib" : "rects");
@@ -953,7 +976,7 @@ async function handleShared() {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.12-14"; // bump on every release
+const APP_VERSION = "2026.11.12-15"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }

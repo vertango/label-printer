@@ -34,7 +34,22 @@ CLS
 BITMAP 0,0,102,1219,0,<raw 1-bit rows>
 PRINT 1,<copies>
 ```
-**Sending method** (Settings):
+**Printer commands** (Settings): **Same as the Jadens app** (default) sends, for every label, exactly what the Jadens app sends (recorded from its Bluetooth traffic):
+```
+SIZE 100 mm,150 mm
+DIRECTION 0,0
+SET GAP ON
+CLS
+SETCOLOR BLACK
+BITMAP 0,0,100,1200,3,<length>,<zlib data>
+
+SPEED 4
+DENSITY 5
+PRINT 1,1
+```
+**Standard TSPL** uses the job shown above and the options below.
+
+**Sending method** (Standard only):
 - **Compressed** (default), the same format the Jadens app uses (found by recording its Bluetooth traffic): `BITMAP x,y,widthBytes,height,3,<length>,<zlib data>`. The zlib stream uses a **1 KB window** (`windowBits` 10, header byte `0x28`), and in mode 3 **1 = black**. A shipping label is about 2-10 KB. Uses pako (MIT/Zlib licence) in `vendor/pako/`.
 - **Rectangles**: solid areas as `BAR x,y,w,h`, the rest as small cropped mode-0 `BITMAP`s.
 - **Plain picture**: one mode-0 `BITMAP` for the whole label (about 122 KB).
