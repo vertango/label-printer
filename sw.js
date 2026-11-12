@@ -2,9 +2,9 @@
 // 1. Receives labels shared from other apps (Android share menu -> "Label Printer"),
 //    stores them in IndexedDB and opens the app with ?shared=1 so it can pick them up.
 // 2. Keeps a copy of the app so it opens quickly and works without internet.
-const CACHE = "label-printer-v9";
+const CACHE = "label-printer-v10";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png",
-  "./vendor/pdfjs/pdf.min.mjs", "./vendor/pdfjs/pdf.worker.min.mjs"];
+  "./vendor/pdfjs/pdf.min.mjs", "./vendor/pdfjs/pdf.worker.min.mjs", "./vendor/pako/pako_deflate.min.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

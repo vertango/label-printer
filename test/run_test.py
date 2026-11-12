@@ -42,9 +42,11 @@ def serve():
     return s
 
 def render_jobs(raw: bytes, w=816, h=1219):
-    """Minimal TSPL renderer: CLS / BITMAP (mode 0) / BAR / PRINT. Returns (image, PRINT line) per job."""
+    """Minimal TSPL renderer: CLS / BITMAP mode 0 / BITMAP mode 3 (zlib, 1 = black) / BAR / PRINT.
+    Returns (image, PRINT line) per job."""
+    import zlib
     out, pos, img = [], 0, None
-    cmd = re.compile(rb"(CLS\r\n)|(BITMAP (\d+),(\d+),(\d+),(\d+),0,)|(BAR (\d+),(\d+),(\d+),(\d+)\r\n)|(PRINT \d+,\d+)\r\n")
+    cmd = re.compile(rb"(CLS\r\n)|(BITMAP (\d+),(\d+),(\d+),(\d+),0,)|(BAR (\d+),(\d+),(\d+),(\d+)\r\n)|(PRINT \d+,\d+)\r\n|(BITMAP (\d+),(\d+),(\d+),(\d+),3,(\d+),)")
     while True:
         m = cmd.search(raw, pos)
         if not m: break
@@ -56,6 +58,12 @@ def render_jobs(raw: bytes, w=816, h=1219):
         elif m.group(7):
             x, y, ww, hh = map(int, m.group(8, 9, 10, 11)); img.paste(0, (x, y, x + ww, y + hh))
         elif m.group(12): out.append((img, m.group(12).decode()))
+        elif m.group(13):
+            x, y, wb, hh, n = map(int, m.group(14, 15, 16, 17, 18)); start = m.end(); packed = raw[start:start + n]
+            assert packed[0] == 0x28, f"zlib window should be 1 KB (CMF 0x28), got {packed[0]:#x}"
+            data = zlib.decompress(packed); assert len(data) == wb * hh, (len(data), wb * hh)
+            img.paste(Image.frombytes("1", (wb * 8, hh), bytes(~b & 255 for b in data)), (x, y))
+            pos = start + n; continue
         pos = m.end()
     return out
 

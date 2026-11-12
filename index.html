@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#1f3a5f">
 <title>Label Printer</title>
 <link rel="manifest" href="manifest.webmanifest">
+<script src="vendor/pako/pako_deflate.min.js"></script>
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
@@ -142,7 +143,12 @@ input[type=file]{display:none}
       <label>Move print left / right<select id="sNudgeX"></select></label>
       <label>Move print up / down<select id="sNudgeY"></select></label>
       <label class="check"><input id="sFlip" type="checkbox"> Print upside down</label>
-      <label class="check"><input id="sFast" type="checkbox"> Fast sending (turn off if labels print wrongly)</label>
+      <label>Sending method
+        <select id="sMethod">
+          <option value="zlib">Compressed, same as the Jadens app (fastest)</option>
+          <option value="rects">Rectangles</option>
+          <option value="plain">Plain picture (slowest, most compatible)</option>
+        </select></label>
       <label class="check"><input id="sSmooth" type="checkbox"> Print batches without stopping (turn off if labels in a batch go out of line)</label>
       <label class="check"><input id="sAuto" type="checkbox"> Print as soon as a label is shared to this app</label>
     </div>
@@ -160,11 +166,11 @@ input[type=file]{display:none}
 /* ---------------- Settings ---------------- */
 const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
 const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
-const DEFAULTS = {smooth:true, fast:true, link:"serial", bleId:null, size:"101.6x152.4", gap:3, density:10, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
+const DEFAULTS = {smooth:true, method:"zlib", link:"serial", bleId:null, size:"101.6x152.4", gap:3, density:10, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
 let S = {...DEFAULTS};
 try { Object.assign(S, JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}")); } catch {}
 const $ = id => document.getElementById(id);
-const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sFast:"fast", sSmooth:"smooth", sAuto:"autoPrint"};
+const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sMethod:"method", sSmooth:"smooth", sAuto:"autoPrint"};
 // Position nudges are drop-downs (tablet number keypads have no minus key).
 for (const [id, neg, pos] of [["sNudgeX", "left", "right"], ["sNudgeY", "up", "down"]]) {
   const el = $(id);
@@ -423,6 +429,20 @@ function bitmapPart(mono, y0, y1, c0, c1) {
   for (let y = 0; y < h; y++) for (let c = 0; c < w; c++) data[y * w + c] = ~mono.bits[(y0 + y) * bpr + c0 + c] & 0xff;
   return concatBytes([head, data, enc.encode("\r\n")]);
 }
+// Compressed picture, the way the Jadens app sends it: BITMAP x,y,width,height,3,length,<zlib data>.
+// Mode 3 data is zlib with a small 1 KB window (what the printer expects), and here 1 = black.
+// A shipping label shrinks from ~122 KB to ~9 KB.
+function zlibPart(mono) {
+  // Only send rows from the first to the last inked row.
+  const bpr = mono.w / 8; let top = 0, bottom = mono.h - 1;
+  const rowEmpty = y => { for (let c = 0; c < bpr; c++) if (mono.bits[y * bpr + c]) return false; return true; };
+  while (top < mono.h && rowEmpty(top)) top++;
+  while (bottom > top && rowEmpty(bottom)) bottom--;
+  if (top >= mono.h) return new Uint8Array(0);
+  const rows = mono.bits.subarray(top * bpr, (bottom + 1) * bpr);
+  const packed = window.pako.deflate(rows, { level: 6, windowBits: 10, memLevel: 8 });
+  return concatBytes([enc.encode(`BITMAP 0,${top},${bpr},${bottom - top + 1},3,${packed.length},`), packed, enc.encode("\r\n")]);
+}
 function tsplJob(mono, copies, opts = {}) {
   // mono: {w (dots, multiple of 8), h, bits:Uint8Array} with 1 = black.
   // opts.first: send the setup lines (size, gap, darkness…); later labels in a batch skip them.
@@ -430,8 +450,10 @@ function tsplJob(mono, copies, opts = {}) {
   //             printer doesn't push each one out and pull the paper back before the next.
   const first = opts.first !== false, last = opts.last !== false;
   const parts = [enc.encode(first ? tsplHeader() : "CLS\r\n")];
-  if (S.fast === false) parts.push(bitmapPart(mono, 0, mono.h, 0, mono.w / 8));
-  else parts.push(...fastParts(mono));
+  const method = S.method === "plain" || S.method === "rects" ? S.method : (window.pako ? "zlib" : "rects");
+  if (method === "plain") parts.push(bitmapPart(mono, 0, mono.h, 0, mono.w / 8));
+  else if (method === "rects") parts.push(...fastParts(mono));
+  else parts.push(zlibPart(mono));
   parts.push(enc.encode(`SET TEAR ${last ? "ON" : "OFF"}\r\nPRINT 1,${Math.max(1, copies | 0)}\r\n`));
   return concatBytes(parts);
 }

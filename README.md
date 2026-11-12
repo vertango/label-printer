@@ -34,7 +34,14 @@ CLS
 BITMAP 0,0,102,1219,0,<raw 1-bit rows>
 PRINT 1,<copies>
 ```
-**Fast sending** (on by default): Bluetooth serial only manages a few tens of KB/s, so instead of one 122 KB `BITMAP`, each label is sent as `BAR x,y,w,h` rectangles for solid areas (barcode bars, borders) plus small cropped `BITMAP`s for text and pictures, skipping blank areas. Shipping labels shrink about 6x, packing lists about 2x; `test/fast_test.py` checks the printed dots are identical to the full-picture method. It can be turned off in Settings.
+**Sending method** (Settings):
+- **Compressed** (default), the same format the Jadens app uses (found by recording its Bluetooth traffic): `BITMAP x,y,widthBytes,height,3,<length>,<zlib data>`. The zlib stream uses a **1 KB window** (`windowBits` 10, header byte `0x28`), and in mode 3 **1 = black**. A shipping label is about 2-10 KB. Uses pako (MIT/Zlib licence) in `vendor/pako/`.
+- **Rectangles**: solid areas as `BAR x,y,w,h`, the rest as small cropped mode-0 `BITMAP`s.
+- **Plain picture**: one mode-0 `BITMAP` for the whole label (about 122 KB).
+
+`test/fast_test.py` checks all three print exactly the same dots.
+
+Batches are sent as one stream: setup lines once, `SET TEAR OFF` for every label but the last, so the printer doesn't feed out and pull back between labels ("Print batches without stopping" in Settings).
 
 In TSPL `BITMAP` data a **0 bit burns (black)** and a 1 bit stays white, most significant bit first. Status: send `ESC ! ?` (`1B 21 3F`), the printer replies with one byte (0 = ready; 1 lid open, 2 jam, 4 out of paper, 16 paused, 32 printing).
 
@@ -43,6 +50,7 @@ In TSPL `BITMAP` data a **0 bit burns (black)** and a 1 bit stays white, most si
 - `sw.js`: service worker; receives files shared to the app and caches the app for offline use.
 - `manifest.webmanifest`: install details and the Android share target.
 - `vendor/pdfjs/`: Mozilla pdf.js 6.5.438 (Apache-2.0), used to read PDFs.
+- `vendor/pako/`: pako 2.2.0 deflate (MIT/Zlib), used for compressed sending.
 - `test/`: `make_fixtures.py` makes sample labels; `run_test.py` loads the app in headless Chrome with a fake printer, prints, and decodes the TSPL back to PNGs in `test/out/` for checking.
 
 Run the tests: `pip install playwright reportlab pillow && python3 test/make_fixtures.py && python3 test/run_test.py`
