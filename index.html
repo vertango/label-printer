@@ -241,7 +241,7 @@ async function serialLink(interactive) {
     async write(bytes, onProgress) {
       const writer = p.writable.getWriter();
       try {
-        const CHUNK = 4096;
+        const CHUNK = 16384;
         for (let i = 0; i < bytes.length; i += CHUNK) {
           await writer.write(bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
           if (onProgress) onProgress(Math.min(i + CHUNK, bytes.length) / bytes.length);
@@ -642,7 +642,7 @@ async function layout(item) {
 }
 
 /* ---------------- Queue ---------------- */
-let items = [], nextId = 1;
+let items = [], nextId = 1, lastSendInfo = "";
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 async function addFiles(files, kind) {
   const newItems = [];
@@ -819,13 +819,21 @@ async function printItems(list) {
       if (!it.mono) throw new Error(`"${it.src.name}" couldn't be prepared`);
       jobs.push(tsplJob(it.mono, it.copies, smooth ? { first: i === 0, last: i === list.length - 1 } : {}));
     }
-    for (const [i, it] of list.entries()) {
-      $("progressText").textContent = `Sending ${it.src.name} (${sent + 1}–${sent + it.copies} of ${total})…`;
-      await writeBytes(jobs[i], f => $("progress").value = (sent + f * it.copies) / total);
-      sent += it.copies; it.done = true; drawQueue();
-    }
+    // Send the whole batch as one continuous stream, so the printer never waits on us between labels.
+    const stream = concatBytes(jobs), ends = []; let acc = 0;
+    for (const [i, j] of jobs.entries()) { acc += j.length; ends.push(acc); }
+    $("progressText").textContent = `Sending ${total} label${total === 1 ? "" : "s"}…`;
+    const t0 = performance.now();
+    await writeBytes(stream, f => {
+      $("progress").value = f;
+      const at = f * stream.length;
+      list.forEach((it, i) => { if (!it.done && ends[i] <= at) { it.done = true; sent += it.copies; } });
+    });
+    list.forEach(it => { if (!it.done) { it.done = true; sent += it.copies; } });
+    drawQueue();
+    lastSendInfo = `${Math.round(stream.length / 1024)} KB in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
     $("progress").value = 1;
-    say(`Sent ${total} label${total === 1 ? "" : "s"} to the printer.`, "ok");
+    say(`Sent ${total} label${total === 1 ? "" : "s"} to the printer <span class="hint">(${lastSendInfo})</span>.`, "ok");
   } catch (e) {
     console.error(e);
     link = null; setStatus("Not connected", "err");
