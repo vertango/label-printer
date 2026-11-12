@@ -41,21 +41,30 @@ def serve():
     threading.Thread(target=s.serve_forever, daemon=True).start()
     return s
 
-def decode(raw: bytes, prefix: str):
-    jobs, pos, n = [], 0, 0
+def render_jobs(raw: bytes, w=816, h=1219):
+    """Minimal TSPL renderer: CLS / BITMAP (mode 0) / BAR / PRINT. Returns (image, PRINT line) per job."""
+    out, pos, img = [], 0, None
+    cmd = re.compile(rb"(CLS\r\n)|(BITMAP (\d+),(\d+),(\d+),(\d+),0,)|(BAR (\d+),(\d+),(\d+),(\d+)\r\n)|(PRINT \d+,\d+)\r\n")
     while True:
-        m = re.compile(rb"BITMAP (\d+),(\d+),(\d+),(\d+),(\d+),").search(raw, pos)
+        m = cmd.search(raw, pos)
         if not m: break
-        x, y, wb, h, mode = map(int, m.groups())
-        start = m.end(); data = raw[start:start + wb * h]
-        header = raw[pos:m.start()].decode(errors="replace")
-        tail_end = raw.index(b"\r\n", start + wb * h + 2) if raw[start + wb*h:start + wb*h+2] == b"\r\n" else start + wb*h
-        tail = raw[start + wb * h: raw.index(b"\r\n", start + wb * h + 2) + 2].decode()
-        img = Image.frombytes("1", (wb * 8, h), bytes(data))  # PIL '1': bit 1 = white, matches TSPL (0 = burn)
-        n += 1; p = OUT / f"{prefix}_{n:02d}.png"; img.save(p)
-        jobs.append({"header": header.strip(), "tail": tail.strip(), "size": (wb * 8, h), "png": p.name,
-                     "black_pct": round(100 * sum(bin(~b & 255).count("1") for b in data) / (len(data) * 8), 1)})
-        pos = start + wb * h
+        if m.group(1): img = Image.new("1", (w, h), 1)
+        elif m.group(2):
+            x, y, wb, hh = map(int, m.group(3, 4, 5, 6)); start = m.end()
+            img.paste(Image.frombytes("1", (wb * 8, hh), raw[start:start + wb * hh]), (x, y))
+            pos = start + wb * hh; continue
+        elif m.group(7):
+            x, y, ww, hh = map(int, m.group(8, 9, 10, 11)); img.paste(0, (x, y, x + ww, y + hh))
+        elif m.group(12): out.append((img, m.group(12).decode()))
+        pos = m.end()
+    return out
+
+def decode(raw: bytes, prefix: str):
+    jobs = []
+    for n, (img, tail) in enumerate(render_jobs(raw), 1):
+        p = OUT / f"{prefix}_{n:02d}.png"; img.save(p)
+        black = sum(1 for v in img.getdata() if v == 0)
+        jobs.append({"tail": tail, "size": img.size, "png": p.name, "black_pct": round(100 * black / (img.size[0] * img.size[1]), 1)})
     return jobs
 
 async def main():

@@ -4,25 +4,9 @@ import asyncio, re, sys, pathlib, http.server, functools, threading, time
 from PIL import Image, ImageChops
 from playwright.async_api import async_playwright
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from run_test import MOCK, ROOT, FIX, OUT
+from run_test import MOCK, ROOT, FIX, OUT, render_jobs
 
-def render_jobs(raw: bytes, w=816, h=1219):
-    """Minimal TSPL renderer: CLS / BITMAP (mode 0) / BAR / PRINT. Returns one image per PRINT."""
-    imgs, pos, img = [], 0, None
-    cmd = re.compile(rb"(CLS\r\n)|(BITMAP (\d+),(\d+),(\d+),(\d+),0,)|(BAR (\d+),(\d+),(\d+),(\d+)\r\n)|(PRINT \d+,(\d+)\r\n)")
-    while True:
-        m = cmd.search(raw, pos)
-        if not m: break
-        if m.group(1): img = Image.new("1", (w, h), 1)
-        elif m.group(2):
-            x, y, wb, hh = map(int, m.group(3, 4, 5, 6)); start = m.end()
-            img.paste(Image.frombytes("1", (wb * 8, hh), raw[start:start + wb * hh]), (x, y))
-            m_end = start + wb * hh; pos = m_end; continue
-        elif m.group(7):
-            x, y, ww, hh = map(int, m.group(8, 9, 10, 11)); img.paste(0, (x, y, x + ww, y + hh))
-        elif m.group(12): imgs.append(img)
-        pos = m.end()
-    return imgs
+def render_imgs(raw): return [img for img, _ in render_jobs(raw)]
 
 async def run_once(pg, fast):
     await pg.evaluate(f"(()=>{{const s=JSON.parse(localStorage.getItem('labelPrinter.settings')||'{{}}');s.fast={str(fast).lower()};localStorage.setItem('labelPrinter.settings',JSON.stringify(s));}})()")
@@ -55,7 +39,7 @@ async def main():
         await pg.add_init_script(MOCK); await pg.goto("http://127.0.0.1:8770/index.html")
         slow, slow_t, ts = await run_once(pg, False)
         fast, fast_t, tf = await run_once(pg, True)
-        a, b = render_jobs(slow) + render_jobs(slow_t), render_jobs(fast) + render_jobs(fast_t)
+        a, b = render_imgs(slow) + render_imgs(slow_t), render_imgs(fast) + render_imgs(fast_t)
         names = ["ClickDrop A4", "A4 label", "eBay 1 (x2)", "eBay 2", "Shopify 6x4", "Image", "Sample label", "Sample pack 1", "Sample pack 2", "Test print"]
         ok = len(a) == len(b) == len(names)
         print(f"jobs: full={len(a)} fast={len(b)}")
