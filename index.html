@@ -103,7 +103,7 @@ input[type=file]{display:none}
       <li>Close the Jadens app so it isn't holding the connection.</li>
       <li>On this page tap <b>Connect printer</b> and choose the JD-168BT. Chrome remembers it, so next time it reconnects by itself when you print.</li>
       <li>To get the app on your home screen and in the <b>Share</b> menu: tap Chrome's <b>⋮</b> menu → <b>Add to home screen</b> → <b>Install</b>. Then, from a downloaded label, tap <b>Share → Label Printer</b>.</li>
-      <li>Tap <b>Test print</b> below. The border should sit just inside the label edges. If it's off, use the <b>nudge</b> settings.</li>
+      <li>Tap <b>Test print</b> below. The border should sit just inside the label edges. If it's off, use <b>Move print</b> in Settings.</li>
     </ol>
     <div class="bar"><button class="btn" id="testBtn">Test print</button><button class="btn" id="statusBtn">Check printer status</button><button class="btn" id="forgetBtn">Forget printer</button></div>
     <p class="hint">Printer not in the list when you tap Connect printer? Try the other way of connecting:</p>
@@ -137,8 +137,8 @@ input[type=file]{display:none}
       <label>Photos / grey areas
         <select id="sDither"><option value="0">Sharp (best for barcodes)</option><option value="1">Dotted shading (photos)</option></select></label>
       <label>Margin inside label (mm)<input id="sMargin" type="number" step="0.5" min="0" max="10"></label>
-      <label>Nudge right (mm, minus = left)<input id="sNudgeX" type="number" step="0.5" min="-10" max="10"></label>
-      <label>Nudge down (mm, minus = up)<input id="sNudgeY" type="number" step="0.5" min="-10" max="10"></label>
+      <label>Move print left / right<select id="sNudgeX"></select></label>
+      <label>Move print up / down<select id="sNudgeY"></select></label>
       <label class="check"><input id="sFlip" type="checkbox"> Print upside down</label>
       <label class="check"><input id="sAuto" type="checkbox"> Print as soon as a label is shared to this app</label>
     </div>
@@ -161,11 +161,20 @@ let S = {...DEFAULTS};
 try { Object.assign(S, JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}")); } catch {}
 const $ = id => document.getElementById(id);
 const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sAuto:"autoPrint"};
+// Position nudges are drop-downs (tablet number keypads have no minus key).
+for (const [id, neg, pos] of [["sNudgeX", "left", "right"], ["sNudgeY", "up", "down"]]) {
+  const el = $(id);
+  for (let v = -6; v <= 6.001; v += 0.5) {
+    const o = document.createElement("option"); o.value = String(v);
+    o.textContent = v === 0 ? "Centred (no change)" : `${Math.abs(v)} mm ${v < 0 ? neg : pos}`;
+    el.appendChild(o);
+  }
+}
 for (const [id,key] of Object.entries(F)) {
   const el = $(id);
-  if (el.type === "checkbox") el.checked = !!S[key]; else el.value = S[key];
+  if (el.type === "checkbox") el.checked = !!S[key]; else el.value = String(S[key]);
   el.addEventListener("change", () => {
-    S[key] = el.type === "checkbox" ? el.checked : (el.type === "number" || el.type === "range") ? Number(el.value) : el.value;
+    S[key] = el.type === "checkbox" ? el.checked : (el.type === "number" || el.type === "range" || key === "nudgeX" || key === "nudgeY") ? Number(el.value) : el.value;
     try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
     if (["size","thresh","dither","margin"].includes(key)) rerenderAll();
   });
