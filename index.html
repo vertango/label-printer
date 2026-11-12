@@ -178,7 +178,7 @@ input[type=file]{display:none}
 /* ---------------- Settings ---------------- */
 const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
 const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
-const DEFAULTS = {v:3, style:"jadens", smooth:true, method:"zlib", link:"serial", bleId:null, size:"100x150", gap:3, density:5, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:false};
+const DEFAULTS = {v:4, style:"jadens", smooth:true, method:"zlib", link:"serial", bleId:null, size:"100x150", gap:3, density:5, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:true};
 let S = {...DEFAULTS};
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}") || {}; } catch {}
@@ -192,6 +192,10 @@ if (Object.keys(saved).length && (saved.v || 0) < 2) {
 if (Object.keys(saved).length && (S.v || 0) < 3) {
   if (!saved.size || saved.size === "101.6x152.4") S.size = "100x150";
   S.style = "jadens"; S.v = 3; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
+}
+// v4: shared labels print straight away by default.
+if (Object.keys(saved).length && (S.v || 0) < 4) {
+  S.autoPrint = true; S.v = 4; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
 }
 const $ = id => document.getElementById(id);
 const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sMethod:"method", sStyle:"style", sSmooth:"smooth", sAuto:"autoPrint"};
@@ -972,11 +976,16 @@ async function handleShared() {
   const files = recs.map(r => r.file instanceof File ? r.file : new File([r.file], r.name || "shared label", { type: r.type || r.file.type }));
   if (!files.length) { say("Nothing was received from the share. Try saving the label and tapping Add labels.", "warn"); return; }
   const added = await addFiles(files, "label");
-  if (S.autoPrint && added.length && anySupported() && (link || await connect(false))) await printItems(added);
+  if (!added.length) return;
+  if (!S.autoPrint) { say(`Label added. Tap <b>Print</b>, or turn on <b>Print as soon as a label is shared</b> in Settings to skip this step.`, "info"); return; }
+  if (!anySupported()) return;
+  const l = link || await connect(false);
+  if (l) await printItems(added);
+  else say(`Label added, but the printer didn't connect by itself. Check it's on, then tap <b>Print</b>.`, "warn");
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.12-15"; // bump on every release
+const APP_VERSION = "2026.11.12-16"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
