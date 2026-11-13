@@ -17,9 +17,10 @@ android {
             // The key file is in the repo but locked with a password that is kept only in the
             // repository's GitHub Actions secrets (ANDROID_KEYSTORE_PASSWORD).
             storeFile rootProject.file("release.jks")
-            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            def pw = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+            storePassword pw
             keyAlias "labelprinter"
-            keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            keyPassword pw
         }
     }
     buildTypes {
