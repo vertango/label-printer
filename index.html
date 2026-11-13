@@ -398,6 +398,7 @@ async function connect(interactive, quiet = false) {
   }
 }
 async function disconnect() {
+  await waitForDelivery();
   if (link) await link.close();
   link = null; setStatus("Not connected", ""); $("connectBtn").textContent = "Connect printer";
 }
@@ -424,7 +425,15 @@ $("forgetBtn").onclick = async () => {
   say("Printer forgotten. Tap Connect printer to choose it again.", "info");
 };
 
+// Android takes data straight away and then sends it over Bluetooth at roughly 15–20 KB/s.
+// Letting go of the printer before that has finished loses the end of the job (a missing
+// last label), so remember when the data should have reached the printer.
+const BT_BYTES_PER_SEC = 10000; // on the slow side, to be safe
+let deliveredAt = 0;
+function deliveryWait() { return Math.max(0, deliveredAt - performance.now()); }
+async function waitForDelivery() { const ms = deliveryWait(); if (ms) await new Promise(r => setTimeout(r, ms)); }
 async function writeBytes(bytes, onProgress) {
+  deliveredAt = Math.max(deliveredAt, performance.now()) + (bytes.length / BT_BYTES_PER_SEC) * 1000 + 1500;
   const l = await connect(true);
   if (!l) throw new Error("Printer not connected");
   try { await l.write(bytes, onProgress); }
@@ -1116,7 +1125,7 @@ async function printIncoming(files, { auto, quick, kind, onDone }) {
   if (!quick) return n;
   if (!ok) { hideQuick(); return n; } // something went wrong: show the full app and its message
   showQuick("✅", `Printed ${n} label${n === 1 ? "" : "s"}`, "Going back…");
-  await new Promise(r => setTimeout(r, 1200));   // let the last bytes reach the printer
+  await waitForDelivery();                       // let the last bytes reach the printer
   if (link) await disconnect();
   window.close();                                // works when Android allows it
   await new Promise(r => setTimeout(r, 600));
@@ -1181,7 +1190,7 @@ async function printOutletSources(srcs, kind, quick) {
   if (!quick || !added.every(i => i.done)) { hideQuick(); return; }
   const n = added.length;
   showQuick("✅", `Printed ${n} label${n === 1 ? "" : "s"}`, "Going back…");
-  await new Promise(r => setTimeout(r, 1200)); if (link) await disconnect();
+  await waitForDelivery(); if (link) await disconnect();
   window.close(); await new Promise(r => setTimeout(r, 600));
   showQuick("✅", `Printed ${n} label${n === 1 ? "" : "s"}`, "Close this tab to return to Outlet Analytics.", true);
 }
@@ -1240,7 +1249,7 @@ if ("launchQueue" in window) {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-24"; // bump on every release
+const APP_VERSION = "2026.11.13-25"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
@@ -1281,7 +1290,7 @@ let releaseTimer = null;
 async function releaseWhenIdle() {
   if (busy) { releaseTimer = setTimeout(releaseWhenIdle, 1000); return; }
   if (link && document.visibilityState === "hidden") {
-    await new Promise(r => setTimeout(r, 300)); // let the last bytes leave
+    await waitForDelivery();                    // let the last bytes reach the printer
     await disconnect(); setStatus("Paused in background", "");
   }
 }
@@ -1290,7 +1299,7 @@ document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState === "hidden") { releaseTimer = setTimeout(releaseWhenIdle, 1500); return; }
   if (!link && !busy && anySupported() && (S.link === "ble" ? false : await knownPort())) await connect(false, true);
 });
-window.addEventListener("pagehide", () => { if (link && !busy) link.close(); });
+window.addEventListener("pagehide", () => { if (link && !busy && !deliveryWait()) link.close(); });
 if ("serial" in navigator && typeof navigator.serial.addEventListener === "function") navigator.serial.addEventListener("disconnect", () => {
   if (link && link.kind === "serial") { link = null; setStatus("Printer off? Tap Connect", ""); $("connectBtn").textContent = "Connect"; }
 });
