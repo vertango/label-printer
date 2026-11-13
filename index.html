@@ -1126,7 +1126,14 @@ async function handleShared() {
   history.replaceState(null, "", location.pathname);
   const diag = recs.filter(r => r.diag).map(r => r.diag).join(" | ");
   const files = recs.filter(r => r.file).map(r => r.file instanceof File ? r.file : new File([r.file], r.name || "shared label", { type: r.type || r.file.type }));
-  if (!files.length) { hideQuick(); say(`Nothing was received from the share. Try saving the label and tapping Add labels.<br><span class="hint">What arrived: ${esc(diag || "nothing")}</span>`, "warn"); return; }
+  if (!files.length) {
+    hideQuick();
+    const onlyLink = /\btext\b|\burl\b/.test(diag) && !/file/.test(diag);
+    say(onlyLink
+      ? `Chrome shared a <b>link to the page</b>, not the label file, so there was nothing to print.<br>Instead: on the label page tap <b>Download</b>. Then either tap <b>Open</b> on the download message and share the PDF to <b>Labels</b>, or tap <b>Add labels</b> here and pick it from Downloads.<br><span class="hint">What arrived: ${esc(diag)}</span>`
+      : `Nothing was received from the share. Try saving the label and tapping Add labels.<br><span class="hint">What arrived: ${esc(diag || "nothing")}</span>`, "warn");
+    return;
+  }
   await printIncoming(files, { auto: S.autoPrint, quick: S.autoPrint && S.quickClose, kind: "label" });
 }
 // Print files handed over by a share or by Outlet Analytics. Returns how many labels went out.
@@ -1270,7 +1277,7 @@ if ("launchQueue" in window) {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-27"; // bump on every release
+const APP_VERSION = "2026.11.13-28"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
