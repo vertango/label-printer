@@ -59,6 +59,10 @@ details>summary::before{content:"▸ ";color:var(--muted)}
 details[open]>summary::before{content:"▾ "}
 ol.steps{padding-left:22px;margin:6px 0}ol.steps li{margin:6px 0}
 progress{width:100%;height:14px}
+#quick{position:fixed;inset:0;background:var(--bg);z-index:30;display:none;align-items:center;justify-content:center;padding:24px}
+#quick .box{background:#fff;border:1px solid var(--line);border-radius:20px;padding:34px 30px;text-align:center;max-width:460px;width:100%}
+#quick .big{font-size:56px;line-height:1}
+#quick h2{margin:14px 0 6px;font-size:24px}
 #overlay{position:fixed;inset:0;background:rgba(15,25,40,.55);display:none;align-items:center;justify-content:center;z-index:20;padding:20px}
 #overlay .box{background:#fff;border-radius:16px;padding:22px;max-width:440px;width:100%}
 #overlay h3{margin:0 0 10px}
@@ -162,6 +166,7 @@ input[type=file]{display:none}
         </select></label>
       <label class="check"><input id="sSmooth" type="checkbox"> Print batches without stopping (Standard only)</label>
       <label class="check"><input id="sAuto" type="checkbox"> Print as soon as a label is shared to this app</label>
+      <label class="check"><input id="sQuick" type="checkbox"> When a label is shared, show only a small "Printing" card, then close and go back</label>
     </div>
     <p class="hint">Settings are kept on this tablet.</p>
   </details>
@@ -170,6 +175,8 @@ input[type=file]{display:none}
   <p class="hint" style="text-align:center">Works in Chrome on Android with Bluetooth printers that use TSPL (Jadens, Munbyn, Rollo and similar). Your files never leave this tablet.</p>
 </main>
 
+<div id="quick"><div class="box"><div class="big" id="qIcon">🖨️</div><h2 id="qTitle">Printing your label…</h2><p class="hint" id="qText">This closes by itself when it's done.</p>
+  <div class="bar" id="qBtns" style="justify-content:center;margin:16px 0 0" hidden><button class="btn" id="qOpen">Open the app</button></div></div></div>
 <div id="overlay"><div class="box"><h3 id="ovTitle"></h3><div id="ovBody"></div><div class="bar" style="margin:16px 0 0"><span class="grow"></span><button class="btn primary" id="ovOk">OK</button></div></div></div>
 
 
@@ -178,7 +185,7 @@ input[type=file]{display:none}
 /* ---------------- Settings ---------------- */
 const DPI = 203, DPMM = 8; // 203 dpi printer: 8 dots per mm
 const SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb";
-const DEFAULTS = {v:4, style:"jadens", smooth:true, method:"zlib", link:"serial", bleId:null, size:"100x150", gap:3, density:5, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:true};
+const DEFAULTS = {v:5, quickClose:true, style:"jadens", smooth:true, method:"zlib", link:"serial", bleId:null, size:"100x150", gap:3, density:5, speed:4, thresh:160, dither:"0", margin:1, nudgeX:0, nudgeY:0, flip:false, autoPrint:true};
 let S = {...DEFAULTS};
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem("labelPrinter.settings") || "{}") || {}; } catch {}
@@ -197,8 +204,12 @@ if (Object.keys(saved).length && (S.v || 0) < 3) {
 if (Object.keys(saved).length && (S.v || 0) < 4) {
   S.autoPrint = true; S.v = 4; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
 }
+// v5: shared labels show a small "Printing" card and close afterwards.
+if (Object.keys(saved).length && (S.v || 0) < 5) {
+  S.quickClose = true; S.v = 5; try { localStorage.setItem("labelPrinter.settings", JSON.stringify(S)); } catch {}
+}
 const $ = id => document.getElementById(id);
-const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sMethod:"method", sStyle:"style", sSmooth:"smooth", sAuto:"autoPrint"};
+const F = {sSize:"size", sGap:"gap", sDensity:"density", sSpeed:"speed", sThresh:"thresh", sDither:"dither", sMargin:"margin", sNudgeX:"nudgeX", sNudgeY:"nudgeY", sFlip:"flip", sMethod:"method", sStyle:"style", sSmooth:"smooth", sAuto:"autoPrint", sQuick:"quickClose"};
 // Position nudges are drop-downs (tablet number keypads have no minus key).
 for (const [id, neg, pos] of [["sNudgeX", "left", "right"], ["sNudgeY", "up", "down"]]) {
   const el = $(id);
@@ -977,17 +988,34 @@ async function handleShared() {
   history.replaceState(null, "", location.pathname);
   const files = recs.map(r => r.file instanceof File ? r.file : new File([r.file], r.name || "shared label", { type: r.type || r.file.type }));
   if (!files.length) { say("Nothing was received from the share. Try saving the label and tapping Add labels.", "warn"); return; }
+  const quick = S.autoPrint && S.quickClose;
+  if (quick) showQuick("🖨️", `Printing ${files.length > 1 ? files.length + " labels" : "your label"}…`, "This closes by itself when it's done.");
   const added = await addFiles(files, "label");
-  if (!added.length) return;
+  if (!added.length) { hideQuick(); return; }
   if (!S.autoPrint) { say(`Label added. Tap <b>Print</b>, or turn on <b>Print as soon as a label is shared</b> in Settings to skip this step.`, "info"); return; }
-  if (!anySupported()) return;
+  if (!anySupported()) { hideQuick(); return; }
   const l = link || await connect(false);
   if (l) await printItems(added);
   else say(`Label added, but the printer didn't connect by itself. Check it's on, then tap <b>Print</b>.`, "warn");
+  if (!quick) return;
+  if (!(l && added.every(i => i.done))) { hideQuick(); return; } // something went wrong: show the full app and its message
+  const n = added.reduce((a, i) => a + i.copies, 0);
+  showQuick("✅", `Printed ${n} label${n === 1 ? "" : "s"}`, "Going back…");
+  await new Promise(r => setTimeout(r, 1200));   // let the last bytes reach the printer
+  if (link) await disconnect();
+  window.close();                                // works when Android allows it
+  await new Promise(r => setTimeout(r, 600));
+  showQuick("✅", `Printed ${n} label${n === 1 ? "" : "s"}`, "Press <b>Back</b> to return to where you were.", true);
 }
+function showQuick(icon, title, text, buttons = false) {
+  $("qIcon").textContent = icon; $("qTitle").textContent = title; $("qText").innerHTML = text;
+  $("qBtns").hidden = !buttons; $("quick").style.display = "flex";
+}
+function hideQuick() { $("quick").style.display = "none"; }
+$("qOpen").onclick = () => { hideQuick(); if (!link) connect(false, true); };
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-18"; // bump on every release
+const APP_VERSION = "2026.11.13-19"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
