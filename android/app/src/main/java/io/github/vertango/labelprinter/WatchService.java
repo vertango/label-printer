@@ -147,10 +147,13 @@ public class WatchService extends Service {
         if (files == null) return;
         for (File f : files) {
             String name = f.getName();
-            if (!f.isFile() || name.startsWith(".") || !name.toLowerCase().endsWith(".pdf")) continue;
+            String low = name.toLowerCase();
+            if (!f.isFile() || name.startsWith(".") || low.endsWith(".crdownload") || low.endsWith(".tmp")) continue;
             String k = key(f);
             if (handled.contains(k)) continue;
             if (f.lastModified() < startedAt - 5000) { handled.add(k); continue; }
+            // eBay's downloads can be named like "5ce967e7-…" with no ".pdf", so look inside the file.
+            if (!low.endsWith(".pdf") && f.length() > 0 && !isPdf(f)) { handled.add(k); continue; }
             long len = f.length();
             Long before = sizes.get(k);
             if (len > 0 && before != null && before == len) {
@@ -163,8 +166,16 @@ public class WatchService extends Service {
         }
     }
 
+    private static boolean isPdf(File f) {
+        byte[] head = new byte[5];
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            return in.read(head) == 5 && head[0] == '%' && head[1] == 'P' && head[2] == 'D' && head[3] == 'F' && head[4] == '-';
+        } catch (Exception e) { return false; }
+    }
+
     private void process(File f, boolean force, int attempt) {
         String name = f.getName();
+        if (attempt == 0) prefs.log("New download: " + name);
         List<byte[]> jobs = new ArrayList<>();
         int pages = 0;
         try (PdfPages pdf = new PdfPages(f)) {
