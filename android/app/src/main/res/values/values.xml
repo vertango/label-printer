@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Label Printer</string>
+    <color name="icon_background">#1F3A5F</color>
+    <color name="theme">#1F3A5F</color>
+    <color name="background">#F3F5F8</color>
+    <string name="asset_statements" translatable="false">[{\"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": {\"namespace\": \"web\", \"site\": \"https://vertango.github.io\"}}]</string>
+    <string name="share_target" translatable="false">{\"action\": \"https://vertango.github.io/label-printer/share-target\", \"method\": \"POST\", \"enctype\": \"multipart/form-data\", \"params\": {\"title\": \"title\", \"text\": \"text\", \"files\": [{\"name\": \"labels\", \"accept\": [\"application/pdf\", \"image/*\", \"text/plain\"]}]}}</string>
+</resources>

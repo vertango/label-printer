@@ -1,0 +1,37 @@
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.10.2" }
+      - name: Check the signing password is set
+        env: { ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" }
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "::error::Add the repository secret ANDROID_KEYSTORE_PASSWORD (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - name: Build
+        env: { ANDROID_KEYSTORE_PASSWORD: "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" }
+        run: gradle -p android assembleRelease --no-daemon
+      - name: Publish
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk label-printer.apk
+          gh release delete android --yes --cleanup-tag 2>/dev/null || true
+          gh release create android label-printer.apk --title "Label Printer for Android" \
+            --notes "Install on your tablet or phone: download label-printer.apk, open it, and allow the install. Build ${{ github.run_number }}."
+        env: { GH_TOKEN: "${{ github.token }}" }

@@ -1,0 +1,40 @@
+plugins { id "com.android.application" }
+
+android {
+    namespace "io.github.vertango.labelprinter"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "io.github.vertango.labelprinter"
+        minSdk 23
+        targetSdk 35
+        versionCode (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+        versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+    }
+
+    signingConfigs {
+        release {
+            // The key file is in the repo but locked with a password that is kept only in the
+            // repository's GitHub Actions secrets (ANDROID_KEYSTORE_PASSWORD).
+            storeFile rootProject.file("release.jks")
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias "labelprinter"
+            keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
+    implementation "androidx.core:core:1.13.1"
+}
