@@ -12,6 +12,13 @@ A simple web app for printing 4x6 shipping labels and packing lists on a **Jaden
 - Appears in Android's **Share** menu once installed; optional "print as soon as shared".
 - Test print, printer status check, darkness/speed/gap and position nudges. Settings stay on the tablet; files never leave it.
 
+## SKU on shipping labels
+Each label card has a **SKU to print on label** box. Outlet Analytics fills it in automatically: its packing list page has **Shipping labels with SKU**, which looks up each label's order (from the order number in the file name) and shares the PDFs plus a note `label-skus.txt`:
+```
+{"type":"label-printer/skus","v":1,"labels":{"<file name>":"<SKU text>"}}
+```
+The app prints that text in the largest blank space on the label, kept 3 mm clear of anything printed (barcode quiet zones) and the edges; if there's no room, the label is shrunk slightly and the SKU goes in a 10 mm strip below. `test/stamp_test.py` checks both.
+
 ## How it talks to the printer
 | | |
 |---|---|

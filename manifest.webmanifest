@@ -22,7 +22,7 @@
       "text": "text",
       "url": "url",
       "files": [
-        { "name": "labels", "accept": ["application/pdf", ".pdf", "image/png", "image/jpeg", "image/webp", "image/*"] }
+        { "name": "labels", "accept": ["application/pdf", ".pdf", "image/png", "image/jpeg", "image/webp", "image/*", "text/plain", ".txt"] }
       ]
     }
   }
