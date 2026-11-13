@@ -1,7 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- A thin Android shell (Trusted Web Activity) around https://vertango.github.io/label-printer/.
      It runs the same web app in Chrome; what it adds is a place in Android's "Open with" list. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Auto-print: reach the printer over Bluetooth, see new PDFs in Downloads, keep watching. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" tools:ignore="BatteryLife" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
@@ -59,6 +73,29 @@
                 <data android:scheme="https" android:host="vertango.github.io" android:pathPrefix="/label-printer" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".AutoPrintActivity"
+            android:exported="true"
+            android:label="Label Auto-print"
+            android:theme="@android:style/Theme.Material.Light.DarkActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".WatchService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

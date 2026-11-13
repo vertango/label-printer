@@ -18,6 +18,8 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "8.10.2" }
+      - name: Off-device tests
+        run: android/hosttest/run.sh
       - name: Compile check
         run: gradle -p android assembleDebug --no-daemon
       - name: Check the signing password is set
