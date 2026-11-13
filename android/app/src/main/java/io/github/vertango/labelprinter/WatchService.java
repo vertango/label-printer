@@ -207,6 +207,8 @@ public class WatchService extends Service {
         update("Printing " + name + "…");
         try {
             PrinterLink.print(this, prefs, jobs);
+            prefs.addPrinted(jobs.size());
+            prefs.lastFile(f.getAbsolutePath());
             prefs.log("Printed " + jobs.size() + " label" + (jobs.size() == 1 ? "" : "s") + " from " + name);
             update("Printed " + name);
         } catch (Exception e) {
@@ -227,15 +229,21 @@ public class WatchService extends Service {
 
     private Notification running(String text) {
         Intent pause = new Intent(this, WatchService.class).setAction(ACTION_PAUSE);
-        return new NotificationCompat.Builder(this, CH_RUN)
+        int today = prefs.todayCount();
+        NotificationCompat.Builder b = new NotificationCompat.Builder(this, CH_RUN)
                 .setSmallIcon(R.drawable.ic_stat_print)
-                .setContentTitle("Label auto-print is on")
+                .setContentTitle("Label auto-print is on · today: " + today + " label" + (today == 1 ? "" : "s"))
                 .setContentText(text)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setContentIntent(openSettings())
-                .addAction(0, "Pause", serviceIntent(1, pause))
-                .build();
+                .addAction(0, "Pause", serviceIntent(1, pause));
+        String last = prefs.lastFile();
+        if (last != null && new File(last).exists()) {
+            Intent again = new Intent(this, WatchService.class).setAction(ACTION_PRINT_FILE).putExtra(EXTRA_PATH, last);
+            b.addAction(0, "Reprint last", serviceIntent(2, again));
+        }
+        return b.build();
     }
     private void update(String text) {
         NotificationManager nm = getSystemService(NotificationManager.class);

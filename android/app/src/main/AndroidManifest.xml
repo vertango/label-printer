@@ -39,6 +39,7 @@
                 android:resource="@string/share_target" />
             <meta-data android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
                 android:value="customtabs" />
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -79,9 +80,11 @@
             android:exported="true"
             android:label="Label Auto-print"
             android:theme="@android:style/Theme.Material.Light.DarkActionBar">
+            <!-- Opened from Label Printer's Settings, the icon's long-press menu, or the notification. -->
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="io.github.vertango.labelprinter.AUTOPRINT_SETTINGS" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
             </intent-filter>
         </activity>
 

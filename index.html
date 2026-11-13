@@ -135,6 +135,9 @@ input[type=file]{display:none}
 
   <details class="card">
     <summary>Settings</summary>
+    <div id="apkBox" hidden style="margin-top:10px">
+      <a class="btn" id="autoPrintLink" href="intent:#Intent;action=io.github.vertango.labelprinter.AUTOPRINT_SETTINGS;package=io.github.vertango.labelprinter;end">⚡ Auto-print settings (print labels as soon as they're downloaded)</a>
+    </div>
     <div class="grid" style="margin-top:10px">
       <label>Label size
         <select id="sSize">
@@ -1277,7 +1280,12 @@ if ("launchQueue" in window) {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-28"; // bump on every release
+const APP_VERSION = "2026.11.13-29";
+// Opened from the Label Printer Android app? (Chrome tells us on the first page load.)
+try {
+  if (document.referrer.startsWith("android-app://io.github.vertango.labelprinter")) localStorage.setItem("labelPrinter.inApk", "1");
+  if (localStorage.getItem("labelPrinter.inApk") === "1") addEventListener("DOMContentLoaded", () => { const b = document.getElementById("apkBox"); if (b) b.hidden = false; });
+} catch {} // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }

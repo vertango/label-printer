@@ -133,6 +133,14 @@ public class AutoPrintActivity extends Activity {
         text("These are separate from the Label Printer app's settings. Your tablet uses 2 mm left.");
 
         heading("Recent");
+        button("Reprint the last label", v -> {
+            String last = prefs.lastFile();
+            if (last == null || !new java.io.File(last).exists()) { Toast.makeText(this, "Nothing to reprint yet.", Toast.LENGTH_SHORT).show(); return; }
+            if (!WatchService.canRun(this)) { Toast.makeText(this, "Allow Nearby devices and Downloads access first.", Toast.LENGTH_LONG).show(); return; }
+            ContextCompat.startForegroundService(this, new Intent(this, WatchService.class)
+                    .setAction(WatchService.ACTION_PRINT_FILE).putExtra(WatchService.EXTRA_PATH, last));
+            Toast.makeText(this, "Reprinting…", Toast.LENGTH_SHORT).show();
+        });
         log = text("");
         button("Open Label Printer", v -> startActivity(new Intent(this, LauncherActivity.class)));
     }
@@ -181,7 +189,9 @@ public class AutoPrintActivity extends Activity {
         filling = true;
         onOff.setChecked(prefs.enabled());
         filling = false;
-        status.setText(prefs.enabled() ? "✅ On — waiting for new labels in Downloads." : "Off.");
+        int today = prefs.todayCount();
+        status.setText((prefs.enabled() ? "✅ On — waiting for new labels in Downloads." : "Off.")
+                + "\nPrinted today: " + today + " label" + (today == 1 ? "" : "s"));
         refreshLog();
     }
     private void refreshLog() { String l = prefs.log(); log.setText(l.isEmpty() ? "Nothing yet." : l); }

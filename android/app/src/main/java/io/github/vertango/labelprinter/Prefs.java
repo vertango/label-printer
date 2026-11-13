@@ -33,6 +33,13 @@ public final class Prefs {
         return o;
     }
 
+    private static String today() { return new SimpleDateFormat("yyyy-MM-dd", Locale.UK).format(new Date()); }
+    /** Labels printed today. */
+    public int todayCount() { return today().equals(p.getString("countDay", "")) ? p.getInt("count", 0) : 0; }
+    public synchronized void addPrinted(int n) { p.edit().putString("countDay", today()).putInt("count", todayCount() + n).apply(); }
+    public String lastFile() { return p.getString("lastFile", null); }
+    public void lastFile(String path) { p.edit().putString("lastFile", path).apply(); }
+
     public synchronized void log(String line) {
         String t = new SimpleDateFormat("HH:mm", Locale.UK).format(new Date());
         String all = t + "  " + line + "\n" + p.getString("log", "");
