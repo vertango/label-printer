@@ -643,7 +643,7 @@ async function pdfSources(file) {
     const page = await doc.getPage(n), vp = page.getViewport({ scale: 1 });
     out.push({
       name: doc.numPages > 1 ? `${file.name} · page ${n}` : file.name,
-      w: vp.width, h: vp.height,
+      w: vp.width, h: vp.height, pdf: true,
       async draw(canvas, region, scale) {
         // Draw region (fractions of the page) at `scale` px per point onto canvas sized region*scale.
         // Render the whole page on its own canvas (pdf.js sizes it), then copy the region across.
@@ -678,7 +678,13 @@ async function imageSource(file) {
 /* ---------------- Layout: crop, rotate, fit ---------------- */
 const CROPS = { auto: "Trim white edges", page: "Whole page", top: "Top half", bottom: "Bottom half", left: "Left half", right: "Right half" };
 const ROTS = { auto: "Turn automatically", 0: "No turn", 90: "Turn right", 270: "Turn left", 180: "Upside down" };
-function looksLikeLabel(src) { const r = src.w / src.h; return Math.abs(r - 2 / 3) < 0.015 || Math.abs(r - 3 / 2) < 0.03; }
+function looksLikeLabel(src) {
+  const r = src.w / src.h;
+  if (Math.abs(r - 2 / 3) < 0.015 || Math.abs(r - 3 / 2) < 0.03) return true;
+  // A PDF page that's already about label size (4x6 in / 100x150 mm, give or take 12%) prints as it is.
+  const lo = Math.min(src.w, src.h), hi = Math.max(src.w, src.h);
+  return !!src.pdf && lo > 250 && lo < 330 && hi > 380 && hi < 485;
+}
 async function layout(item, reserve = 0) {
   const src = item.src, L = labelDots();
   // 1. Work out the region to print.
@@ -692,7 +698,9 @@ async function layout(item, reserve = 0) {
     c.width = Math.max(1, Math.round(region.w * src.w * s)); c.height = Math.max(1, Math.round(region.h * src.h * s));
     await src.draw(c, region, s);
     const b = contentBox(c);
-    region = { x: region.x + b.x * region.w, y: region.y + b.y * region.h, w: b.w * region.w, h: b.h * region.h };
+    // Only trim when what's left is a real label. If it's a small part of the page (a line of
+    // text, a number), print the page as it is instead of blowing that part up to fill the label.
+    if (b.w * b.h >= 0.1) region = { x: region.x + b.x * region.w, y: region.y + b.y * region.h, w: b.w * region.w, h: b.h * region.h };
   }
   // 2. Turn it so it fills the label best.
   const rw = region.w * src.w, rh = region.h * src.h;
@@ -1232,7 +1240,7 @@ if ("launchQueue" in window) {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-23"; // bump on every release
+const APP_VERSION = "2026.11.13-24"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
