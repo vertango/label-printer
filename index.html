@@ -437,11 +437,13 @@ $("forgetBtn").onclick = async () => {
 const BT_BYTES_PER_SEC = 10000; // on the slow side, to be safe
 const TEST_NO_PACING = !!window.__labelPrinterNoPacing; // set only by the automated tests
 const SEND_BYTES_PER_SEC = TEST_NO_PACING ? 1e9 : 15000; // pace of sending to the printer
-let deliveredAt = 0;
+let deliveredAt = 0, transmitEnd = 0;
 function deliveryWait() { return Math.max(0, deliveredAt - performance.now()); }
 async function waitForDelivery() { const ms = deliveryWait(); if (ms) await new Promise(r => setTimeout(r, ms)); }
 async function writeBytes(bytes, onProgress) {
-  deliveredAt = Math.max(deliveredAt, performance.now()) + (bytes.length / BT_BYTES_PER_SEC) * 1000 + 1500;
+  // Bluetooth sends one thing after another: queue this after anything still on its way.
+  transmitEnd = Math.max(transmitEnd, performance.now()) + (bytes.length / BT_BYTES_PER_SEC) * 1000;
+  deliveredAt = transmitEnd + 1500;
   try { return await writeNow(bytes, onProgress); } finally { deliveredAt = Math.max(deliveredAt, performance.now() + 1500); }
 }
 async function writeNow(bytes, onProgress) {
@@ -1268,7 +1270,7 @@ if ("launchQueue" in window) {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-26"; // bump on every release
+const APP_VERSION = "2026.11.13-27"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
