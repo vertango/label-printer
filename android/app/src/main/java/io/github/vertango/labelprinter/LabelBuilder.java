@@ -56,23 +56,27 @@ public final class LabelBuilder {
         }
         // Labels + slips in one download: print just the labels. Slips on their own still print.
         boolean pair = !labels.isEmpty() && !slips.isEmpty();
-        SkuMatcher matcher = pair ? SkuList.matcher(c) : null;
-        List<Integer> toPrint = pair ? labels : allPages(pages);
-        if (pair) r.slipsSkipped = slips.size();
+        SkuMatcher matcher = pair && prefs.skuStamp() ? SkuList.matcher(c) : null;
+        boolean onlyLabels = pair && prefs.labelsOnly();
+        List<Integer> toPrint = onlyLabels ? labels : allPages(pages);
+        if (onlyLabels) r.slipsSkipped = slips.size();
+        java.util.Map<Integer, Integer> labelIndex = new java.util.HashMap<>();
+        for (int i = 0; i < labels.size(); i++) labelIndex.put(labels.get(i), i);
         LabelPipeline.Options o = prefs.options();
         for (int k = 0; k < toPrint.size(); k++) {
             int n = toPrint.get(k);
             double[] sz = pdf.size(n);
             if (!rule.prints(n, LabelRaster.looksLikeLabel(sz[0], sz[1]))) continue;
             String stamp = "";
-            if (matcher != null) {
-                int s = slips.size() == 1 ? slips.get(0) : (k < slips.size() ? slips.get(k) : -1);
+            Integer li = labelIndex.get(n);
+            if (matcher != null && li != null) {
+                int s = slips.size() == 1 ? slips.get(0) : (li < slips.size() ? slips.get(li) : -1);
                 if (s >= 0) stamp = matcher.stampFor(text[s]);
             }
             byte[] bits = LabelPipeline.layout(pdf.page(n), o);
             if (!stamp.isEmpty()) bits = stamp(pdf.page(n), o, bits, stamp);
             r.jobs.add(Tspl.jadensJob(bits, prefs.density(), prefs.speed(), 1, false));
-            r.stamps.add(stamp);
+            if (li != null) r.stamps.add(stamp);
         }
         return r;
     }

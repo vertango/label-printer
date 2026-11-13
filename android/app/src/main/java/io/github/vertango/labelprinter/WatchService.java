@@ -203,11 +203,11 @@ public class WatchService extends Service {
             event("Couldn't open " + name, "It may not be a normal PDF.", null);
             return;
         }
-        if (built.slipsSkipped > 0) {
+        if (built.slipsSkipped > 0 || !built.stamps.isEmpty()) {
             StringBuilder sk = new StringBuilder();
             for (String st : built.stamps) sk.append(sk.length() > 0 ? ", " : "").append(st.isEmpty() ? "no SKU found" : st);
-            prefs.log("Labels only (" + built.slipsSkipped + " packing slip" + (built.slipsSkipped == 1 ? "" : "s") + " not printed). SKU: " + sk
-                    + (SkuList.summary(this) == null ? " — download the SKU list from Outlet Analytics" : ""));
+            prefs.log((built.slipsSkipped > 0 ? "Labels only (" + built.slipsSkipped + " packing slip" + (built.slipsSkipped == 1 ? "" : "s") + " not printed). " : "")
+                    + (prefs.skuStamp() ? "SKU: " + sk + (SkuList.summary(this) == null ? " — download the SKU list from Outlet Analytics" : "") : "SKU printing is off"));
         }
         if (jobs.isEmpty()) {
             prefs.log("Skipped " + name + " (doesn't look like a label)");

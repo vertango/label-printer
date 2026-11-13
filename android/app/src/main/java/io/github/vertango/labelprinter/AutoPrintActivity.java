@@ -119,6 +119,8 @@ public class AutoPrintActivity extends Activity {
         heading("SKU on eBay labels");
         text("On eBay, tick both Postage label and Invoice/Packing slip, then Download. Only the label prints, with the item's SKU on it. The SKU comes from your SKU list: in Outlet Analytics open Packing list and tap Download SKU list for label printer (again after adding listings).");
         skuInfo = text("");
+        toggle("Print the SKU on eBay labels", prefs.skuStamp(), prefs::skuStamp);
+        toggle("Don't print the packing slip (labels only)", prefs.labelsOnly(), prefs::labelsOnly);
 
         heading("4. Print settings");
         List<String> dens = new ArrayList<>();
@@ -286,6 +288,14 @@ public class AutoPrintActivity extends Activity {
     }
     private void tickIf(Button b, boolean ok, String done) {
         if (ok) { b.setText("✅ " + done); b.setEnabled(false); }
+    }
+    interface OnToggle { void set(boolean on); }
+    private void toggle(String label, boolean on, OnToggle onToggle) {
+        Switch sw = new Switch(this);
+        sw.setText(label); sw.setTextSize(16); sw.setChecked(on);
+        sw.setPadding(0, dp(8), 0, dp(8));
+        sw.setOnCheckedChangeListener((v, checked) -> onToggle.set(checked));
+        root.addView(sw);
     }
     interface OnPick { void pick(int i); }
     private void spinner(List<String> items, int sel, OnPick onPick) {

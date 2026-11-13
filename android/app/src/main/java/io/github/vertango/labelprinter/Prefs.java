@@ -27,6 +27,13 @@ public final class Prefs {
     public float nudgeY() { return p.getFloat("nudgeY", 0f); }
     public void nudgeY(float v) { p.edit().putFloat("nudgeY", v).apply(); }
 
+    /** Print the SKU from the packing slip on eBay labels. */
+    public boolean skuStamp() { return p.getBoolean("skuStamp", true); }
+    public void skuStamp(boolean v) { p.edit().putBoolean("skuStamp", v).apply(); }
+    /** When a download has labels and packing slips, print only the labels. */
+    public boolean labelsOnly() { return p.getBoolean("labelsOnly", true); }
+    public void labelsOnly(boolean v) { p.edit().putBoolean("labelsOnly", v).apply(); }
+
     public LabelPipeline.Options options() {
         LabelPipeline.Options o = new LabelPipeline.Options();
         o.nudgeXmm = nudgeX(); o.nudgeYmm = nudgeY();
