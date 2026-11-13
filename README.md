@@ -12,6 +12,12 @@ A simple web app for printing 4x6 shipping labels and packing lists on a **Jaden
 - Appears in Android's **Share** menu once installed; optional "print as soon as shared".
 - Test print, printer status check, darkness/speed/gap and position nudges. Settings stay on the tablet; files never leave it.
 
+## From Outlet Analytics
+Outlet Analytics opens `…/label-printer/#outlet=<base64url JSON>` in a new tab (Android's share menu doesn't pass files between two web apps):
+- `{"k":"pack","g":"<date>","u":<units>,"n":<note|null>,"r":[[sku,qty,title,channels],…]}`: the packing list, drawn and printed here.
+- `{"k":"label","s":{"<file name>":"<SKU>"}}`: SKUs for label files; the PDFs are then posted with `window.postMessage` (`label-printer/ready` → `label-printer/print` → `label-printer/done`). If the tabs aren't linked, you pick the PDFs here and the SKUs are applied.
+Only `https://outlet-analytics-*.*.chatgpt.site` can post files, and printing starts without a tap only when the page was opened from there. `test/outlet_e2e.py` and `test/outlet_fallback.py` check both paths.
+
 ## SKU on shipping labels
 Each label card has a **SKU to print on label** box. Outlet Analytics fills it in automatically: its packing list page has **Shipping labels with SKU**, which looks up each label's order (from the order number in the file name) and shares the PDFs plus a note `label-skus.txt`:
 ```

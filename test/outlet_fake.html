@@ -1,0 +1,34 @@
+<!doctype html><title>Fake Outlet Analytics</title><button id=pack>pack</button><button id=labels>labels</button><pre id=out></pre>
+<script>const LP_ORIGIN='https://vertango.github.io',LP_URL=LP_ORIGIN+'/label-printer/';
+function lpLink(payload){
+ const bytes=new TextEncoder().encode(JSON.stringify(payload));let bin='';bytes.forEach(b=>{bin+=String.fromCharCode(b);});
+ return LP_URL+'#outlet='+btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function openLabelPrinter(payload){
+ const w=window.open(lpLink(payload),'_blank');
+ if(!w)throw new Error('The Label Printer tab was blocked. Allow pop-ups for this site, then try again.');
+ return w;
+}
+/** Waits for the Label Printer tab to say it's ready, posts the files, and reports how many printed. */
+function postFiles(w,files){
+ return new Promise(resolve=>{
+  let sent=false;const stop=(msg)=>{window.removeEventListener('message',on);clearTimeout(t);resolve(msg);};
+  const on=async(e)=>{
+   if(e.origin!==LP_ORIGIN||e.source!==w)return;
+   if(e.data?.type==='label-printer/ready'&&!sent){sent=true;
+    const list=await Promise.all(files.map(async f=>({name:f.name,type:f.type,data:await f.arrayBuffer()})));
+    w.postMessage({type:'label-printer/print',files:list},LP_ORIGIN,list.map(f=>f.data));}
+   if(e.data?.type==='label-printer/done')stop(e.data.ok?`Printed ${e.data.printed} label${e.data.printed===1?'':'s'}.`:'Label Printer has the labels; check it for a message.');
+  };
+  window.addEventListener('message',on);
+  const t=setTimeout(()=>stop(sent?'Sent to Label Printer.':'Label Printer opened with the SKUs. If it asks, pick the same label PDFs there.'),60_000);
+ });
+}
+const stampText=(skus)=>skus.map(s=>s.quantity>1?`${s.sku} ×${s.quantity}`:s.sku).join(' · ');
+
+
+document.getElementById('pack').onclick=()=>{openLabelPrinter({k:'pack',g:'Fri 13 Nov, 12:30',u:3,n:null,r:[['22in',1,'Mini BMW Exhaust Pressure Sensor Connector 806-881','Amz 1'],['48in',1,'PDC Parking Sensor Connector 6 Pin Prewired Plug','eBay 1'],['1425in / 1756-I',1,'6 Pin Car Connector Accelerator Pedal Air Flow Meter Plug','eBay 1']]});};
+document.getElementById('labels').onclick=async()=>{const pdf=await (await fetch('/fixture.pdf')).blob();
+ const files=[new File([pdf],'eBay label 24-15408-19804.pdf',{type:'application/pdf'})];
+ const w=openLabelPrinter({k:'label',s:{'eBay label 24-15408-19804.pdf':'48in'}});document.getElementById('out').textContent=await postFiles(w,files);};
+</script>
