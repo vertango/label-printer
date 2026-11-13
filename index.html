@@ -1086,8 +1086,9 @@ async function handleShared() {
   let recs = [];
   try { recs = await takeSharedFiles(); } catch (e) { console.error(e); }
   history.replaceState(null, "", location.pathname);
-  const files = recs.map(r => r.file instanceof File ? r.file : new File([r.file], r.name || "shared label", { type: r.type || r.file.type }));
-  if (!files.length) { say("Nothing was received from the share. Try saving the label and tapping Add labels.", "warn"); return; }
+  const diag = recs.filter(r => r.diag).map(r => r.diag).join(" | ");
+  const files = recs.filter(r => r.file).map(r => r.file instanceof File ? r.file : new File([r.file], r.name || "shared label", { type: r.type || r.file.type }));
+  if (!files.length) { hideQuick(); say(`Nothing was received from the share. Try saving the label and tapping Add labels.<br><span class="hint">What arrived: ${esc(diag || "nothing")}</span>`, "warn"); return; }
   const quick = S.autoPrint && S.quickClose;
   const labelCount = files.filter(f => !/\.txt$/i.test(f.name) && f.type !== "text/plain").length;
   if (quick) showQuick("🖨️", `Printing ${labelCount > 1 ? labelCount + " labels" : "your label"}…`, "This closes by itself when it's done.");
@@ -1116,7 +1117,7 @@ function hideQuick() { $("quick").style.display = "none"; }
 $("qOpen").onclick = () => { hideQuick(); if (!link) connect(false, true); };
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-20"; // bump on every release
+const APP_VERSION = "2026.11.13-21"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }

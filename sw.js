@@ -2,7 +2,7 @@
 // 1. Receives labels shared from other apps (Android share menu -> "Label Printer"),
 //    stores them in IndexedDB and opens the app with ?shared=1 so it can pick them up.
 // 2. Keeps a copy of the app so it opens quickly and works without internet.
-const CACHE = "label-printer-v20";
+const CACHE = "label-printer-v21";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png",
   "./vendor/pdfjs/pdf.min.mjs", "./vendor/pdfjs/pdf.worker.min.mjs", "./vendor/pako/pako_deflate.min.js"];
 
@@ -23,11 +23,17 @@ function idb() {
 }
 async function receiveShare(request) {
   const form = await request.formData();
-  const files = form.getAll("labels").filter(f => f && typeof f !== "string");
+  // Take files from any field (not only "labels"), and note what arrived for troubleshooting.
+  const files = [], seen = [];
+  for (const [k, v] of form.entries()) {
+    if (v && typeof v === "object" && "size" in v) { files.push(v); seen.push(`${k}: file ${v.type || "?"} ${v.size} bytes`); }
+    else seen.push(`${k}: text (${String(v).length} chars)`);
+  }
   const db = await idb();
   await new Promise((res, rej) => {
     const tx = db.transaction("shared", "readwrite"), st = tx.objectStore("shared");
     for (const f of files) st.add({ file: f, name: f.name, type: f.type });
+    st.add({ diag: seen.join("; ") || "empty form", at: Date.now() });
     tx.oncomplete = res; tx.onerror = () => rej(tx.error);
   });
   return Response.redirect(new URL("./?shared=1", self.registration.scope).href, 303);
