@@ -131,8 +131,12 @@ public class WatchService extends Service {
 
     private void poll() {
         if (!watching) return;
-        scan();
-        handler.postDelayed(this::poll, 1500);
+        // Check often while the screen is on (when downloads happen); hardly at all while it's off,
+        // to save battery. New files also wake it straight away when Android reports them.
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        boolean awake = pm == null || pm.isInteractive();
+        if (awake) scan();
+        handler.postDelayed(this::poll, awake ? 1500 : 30000);
     }
 
     private static String key(File f) { return f.getAbsolutePath() + "|" + f.length() + "|" + f.lastModified(); }
