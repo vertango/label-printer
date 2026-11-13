@@ -1218,8 +1218,21 @@ function showQuick(icon, title, text, buttons = false) {
 function hideQuick() { $("quick").style.display = "none"; }
 $("qOpen").onclick = () => { hideQuick(); if (!link) connect(false, true); };
 
+/* ---------------- Opened with "Open with → Label Printer" ----------------
+   Where the browser supports it (file_handlers in the manifest), files opened with this app
+   arrive here and are printed like a shared label. */
+if ("launchQueue" in window) {
+  window.launchQueue.setConsumer(async params => {
+    if (!params || !params.files || !params.files.length) return;
+    try {
+      const files = await Promise.all(params.files.map(h => h.getFile()));
+      await printIncoming(files, { auto: S.autoPrint, quick: S.autoPrint && S.quickClose, kind: "label" });
+    } catch (e) { console.error(e); say("Couldn't open that file. Try Add labels instead.", "err"); }
+  });
+}
+
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-22"; // bump on every release
+const APP_VERSION = "2026.11.13-23"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
