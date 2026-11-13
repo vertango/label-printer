@@ -48,7 +48,7 @@ public class AutoPrintActivity extends Activity {
     private Prefs prefs;
     private LinearLayout root;
     private Switch onOff;
-    private TextView status, log;
+    private TextView status, log, skuInfo;
     private Button btPerm, notePerm, filePerm, batteryPerm;
     private Spinner printer;
     private final List<BluetoothDevice> devices = new ArrayList<>();
@@ -115,6 +115,10 @@ public class AutoPrintActivity extends Activity {
         rg.setOnCheckedChangeListener((g, id) -> prefs.rule((String) g.findViewById(id).getTag()));
         root.addView(rg);
         text("Anything skipped shows a notification with a Print anyway button.");
+
+        heading("SKU on eBay labels");
+        text("On eBay, tick both Postage label and Invoice/Packing slip, then Download. Only the label prints, with the item's SKU on it. The SKU comes from your SKU list: in Outlet Analytics open Packing list and tap Download SKU list for label printer (again after adding listings).");
+        skuInfo = text("");
 
         heading("4. Print settings");
         List<String> dens = new ArrayList<>();
@@ -192,6 +196,8 @@ public class AutoPrintActivity extends Activity {
         int today = prefs.todayCount();
         status.setText((prefs.enabled() ? "✅ On — waiting for new labels in Downloads." : "Off.")
                 + "\nPrinted today: " + today + " label" + (today == 1 ? "" : "s"));
+        String sum = SkuList.summary(this);
+        skuInfo.setText(sum == null ? "SKU list: not downloaded yet." : "✅ SKU list: " + sum);
         refreshLog();
     }
     private void refreshLog() { String l = prefs.log(); log.setText(l.isEmpty() ? "Nothing yet." : l); }

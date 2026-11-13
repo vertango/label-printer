@@ -43,6 +43,7 @@ public class WatchService extends Service {
     static final Pattern LABEL_NAME = Pattern.compile(
             "(?i)(label|postage|shipping|royal.?mail|click.?(and|&|n)?.?drop|ebay|evri|hermes|parcel|dpd|yodel|amazon|shopify|despatch|dispatch)");
 
+    static final Pattern SKU_LIST_NAME = Pattern.compile("(?i)label-printer-sku-list.*\\.json");
     private Prefs prefs;
     private HandlerThread thread;
     private Handler handler;
@@ -152,6 +153,15 @@ public class WatchService extends Service {
             String k = key(f);
             if (handled.contains(k)) continue;
             if (f.lastModified() < startedAt - 5000) { handled.add(k); continue; }
+            if (SKU_LIST_NAME.matcher(name).matches()) {
+                Long seen = sizes.get(k);
+                if (seen == null || seen != f.length()) { sizes.put(k, f.length()); continue; }
+                handled.add(k); sizes.remove(k);
+                int n = SkuList.importFrom(this, f);
+                prefs.log(n >= 0 ? "SKU list updated: " + n + " listings" : "Couldn't read " + name);
+                if (n >= 0) update("SKU list updated: " + n + " listings");
+                continue;
+            }
             // eBay's downloads can be named like "5ce967e7-…" with no ".pdf", so look inside the file.
             if (!low.endsWith(".pdf") && f.length() > 0 && !isPdf(f)) { handled.add(k); continue; }
             long len = f.length();
@@ -176,20 +186,14 @@ public class WatchService extends Service {
     private void process(File f, boolean force, int attempt) {
         String name = f.getName();
         if (attempt == 0) prefs.log("New download: " + name);
-        List<byte[]> jobs = new ArrayList<>();
-        int pages = 0;
+        List<byte[]> jobs;
+        LabelBuilder.Result built;
         try (PdfPages pdf = new PdfPages(f)) {
-            pages = pdf.count();
             String rule = prefs.rule();
             boolean named = LABEL_NAME.matcher(name).find();
-            for (int n = 0; n < pages; n++) {
-                double[] sz = pdf.size(n);
-                boolean labelSized = LabelRaster.looksLikeLabel(sz[0], sz[1]);
-                boolean ok = force || Prefs.RULE_ALL.equals(rule) || labelSized || (Prefs.RULE_NAMED.equals(rule) && named);
-                if (!ok) continue;
-                byte[] bits = LabelPipeline.layout(pdf.page(n), prefs.options());
-                jobs.add(Tspl.jadensJob(bits, prefs.density(), prefs.speed(), 1, false));
-            }
+            built = LabelBuilder.build(this, f, pdf, prefs, (n, labelSized) ->
+                    force || Prefs.RULE_ALL.equals(rule) || labelSized || (Prefs.RULE_NAMED.equals(rule) && named));
+            jobs = built.jobs;
         } catch (Exception e) {
             if (attempt < 3) { // maybe still being written
                 handler.postDelayed(() -> printing.execute(() -> process(f, force, attempt + 1)), 2000);
@@ -198,6 +202,12 @@ public class WatchService extends Service {
             prefs.log("Couldn't open " + name);
             event("Couldn't open " + name, "It may not be a normal PDF.", null);
             return;
+        }
+        if (built.slipsSkipped > 0) {
+            StringBuilder sk = new StringBuilder();
+            for (String st : built.stamps) sk.append(sk.length() > 0 ? ", " : "").append(st.isEmpty() ? "no SKU found" : st);
+            prefs.log("Labels only (" + built.slipsSkipped + " packing slip" + (built.slipsSkipped == 1 ? "" : "s") + " not printed). SKU: " + sk
+                    + (SkuList.summary(this) == null ? " — download the SKU list from Outlet Analytics" : ""));
         }
         if (jobs.isEmpty()) {
             prefs.log("Skipped " + name + " (doesn't look like a label)");

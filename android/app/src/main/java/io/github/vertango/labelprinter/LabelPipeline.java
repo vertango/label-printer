@@ -16,7 +16,9 @@ public final class LabelPipeline {
         public int threshold = 160;
     }
 
-    public static byte[] layout(Page page, Options o) throws Exception {
+    public static byte[] layout(Page page, Options o) throws Exception { return layout(page, o, 0); }
+
+    public static byte[] layout(Page page, Options o, int reserve) throws Exception {
         double W = page.width(), H = page.height();
         double[] region = {0, 0, 1, 1};
         if (!LabelRaster.looksLikeLabel(W, H)) {
@@ -27,7 +29,7 @@ public final class LabelPipeline {
             if (b[2] * b[3] >= 0.1) region = b;
         }
         double rw = region[2] * W, rh = region[3] * H;
-        LabelRaster.Plan p = LabelRaster.plan(rw, rh, o.nudgeXmm, o.nudgeYmm, o.marginMm);
+        LabelRaster.Plan p = LabelRaster.plan(rw, rh, o.nudgeXmm, o.nudgeYmm, o.marginMm, reserve);
         int[] piece = page.render(region, p.cw, p.ch);
         return LabelRaster.compose(piece, p, o.threshold);
     }

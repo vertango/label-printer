@@ -50,18 +50,23 @@ public final class LabelRaster {
     }
 
     public static Plan plan(double rw, double rh, double nudgeXmm, double nudgeYmm, double marginMm) {
+        return plan(rw, rh, nudgeXmm, nudgeYmm, marginMm, 0);
+    }
+
+    /** reserve: dots kept free at the bottom (for the SKU strip when there's no blank space). */
+    public static Plan plan(double rw, double rh, double nudgeXmm, double nudgeYmm, double marginMm, int reserve) {
         Plan p = new Plan();
         p.rot = (rw > rh) != (W > H) ? 90 : 0;
         boolean turned = p.rot == 90;
         int m = (int) Math.round(marginMm * DPMM);
-        double boxW = W - 2 * m, boxH = H - 2 * m;
+        double boxW = W - 2 * m, boxH = H - 2 * m - reserve;
         double fw = turned ? rh : rw, fh = turned ? rw : rh;
         p.scale = Math.min(boxW / fw, boxH / fh);
         p.cw = Math.max(1, (int) Math.round(rw * p.scale));
         p.ch = Math.max(1, (int) Math.round(rh * p.scale));
         int pw = turned ? p.ch : p.cw, ph = turned ? p.cw : p.ch;
         p.ox = (int) Math.round((W - pw) / 2.0 + nudgeXmm * DPMM);
-        p.oy = (int) Math.round((H - ph) / 2.0 + nudgeYmm * DPMM);
+        p.oy = (int) Math.round((H - reserve - ph) / 2.0 + nudgeYmm * DPMM);
         return p;
     }
 
