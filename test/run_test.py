@@ -10,13 +10,14 @@ FIX = ROOT / "test/fixtures"; OUT = ROOT / "test/out"; OUT.mkdir(exist_ok=True)
 
 MOCK = r"""
 (() => {
-  window.__sent = [];
+  window.__sent = []; window.__writes = [];
+  if (!window.__labelPrinterPacing) window.__labelPrinterNoPacing = true;
   let granted = sessionStorage.getItem("fakeGranted") ? [null] : [];
   class FakePort {
     constructor(){ this.readable=null; this.writable=null; }
     getInfo(){ return {bluetoothServiceClassId:"00001101-0000-1000-8000-00805f9b34fb"}; }
     async open(o){ if(this.writable) throw new DOMException("already open","InvalidStateError");
-      this.writable = new WritableStream({ write(chunk){ window.__sent.push(Array.from(chunk)); } });
+      this.writable = new WritableStream({ write(chunk){ window.__sent.push(Array.from(chunk)); window.__writes.push([performance.now(), chunk.length]); } });
       this.readable = new ReadableStream({ pull(ctrl){ return new Promise(r=>setTimeout(()=>{ try{ctrl.enqueue(new Uint8Array([0]));}catch{} r(); }, 50)); } });
     }
     async close(){ this.writable=null; this.readable=null; }

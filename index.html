@@ -285,12 +285,18 @@ async function serialLink(interactive) {
   return {
     kind: "serial", name: "Printer",
     async write(bytes, onProgress) {
+      // Paced: small pieces at about the speed the printer's Bluetooth takes them (the Jadens
+      // app sends at ~18 KB/s). Sent all at once, the printer can drop data while it's busy
+      // printing, and the label comes out with stripes.
       const writer = p.writable.getWriter();
       try {
-        const CHUNK = 16384;
+        const CHUNK = 1024, gap = (CHUNK / SEND_BYTES_PER_SEC) * 1000;
         for (let i = 0; i < bytes.length; i += CHUNK) {
+          const t = performance.now();
           await writer.write(bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
           if (onProgress) onProgress(Math.min(i + CHUNK, bytes.length) / bytes.length);
+          const wait = gap - (performance.now() - t);
+          if (wait > 1 && i + CHUNK < bytes.length) await new Promise(r => setTimeout(r, wait));
         }
       } finally { writer.releaseLock(); }
     },
@@ -429,11 +435,16 @@ $("forgetBtn").onclick = async () => {
 // Letting go of the printer before that has finished loses the end of the job (a missing
 // last label), so remember when the data should have reached the printer.
 const BT_BYTES_PER_SEC = 10000; // on the slow side, to be safe
+const TEST_NO_PACING = !!window.__labelPrinterNoPacing; // set only by the automated tests
+const SEND_BYTES_PER_SEC = TEST_NO_PACING ? 1e9 : 15000; // pace of sending to the printer
 let deliveredAt = 0;
 function deliveryWait() { return Math.max(0, deliveredAt - performance.now()); }
 async function waitForDelivery() { const ms = deliveryWait(); if (ms) await new Promise(r => setTimeout(r, ms)); }
 async function writeBytes(bytes, onProgress) {
   deliveredAt = Math.max(deliveredAt, performance.now()) + (bytes.length / BT_BYTES_PER_SEC) * 1000 + 1500;
+  try { return await writeNow(bytes, onProgress); } finally { deliveredAt = Math.max(deliveredAt, performance.now() + 1500); }
+}
+async function writeNow(bytes, onProgress) {
   const l = await connect(true);
   if (!l) throw new Error("Printer not connected");
   try { await l.write(bytes, onProgress); }
@@ -1012,16 +1023,24 @@ async function printItems(list) {
       if (!it.mono) throw new Error(`"${it.src.name}" couldn't be prepared`);
       jobs.push(tsplJob(it.mono, it.copies, smooth ? { first: i === 0, last: i === list.length - 1 } : {}));
     }
-    // Send the whole batch as one continuous stream, so the printer never waits on us between labels.
-    const stream = concatBytes(jobs), ends = []; let acc = 0;
-    for (const [i, j] of jobs.entries()) { acc += j.length; ends.push(acc); }
+    // Send label by label, keeping the printer at most one label ahead: it prints one while
+    // the next arrives, so printing stays continuous without overflowing the printer.
+    const L = labelDots(), ips = Math.max(1, Math.min(6, S.speed | 0));
+    const printMs = it => ((L.hmm + (Number(S.gap) || 3)) * it.copies / (ips * 25.4)) * 1000 + 300;
     $("progressText").textContent = `Sending ${total} label${total === 1 ? "" : "s"}…`;
-    const t0 = performance.now();
-    await writeBytes(stream, f => {
-      $("progress").value = f;
-      const at = f * stream.length;
-      list.forEach((it, i) => { if (!it.done && ends[i] <= at) { it.done = true; sent += it.copies; } });
-    });
+    const t0 = performance.now(), totalBytes = jobs.reduce((a, j) => a + j.length, 0);
+    let bytesDone = 0, readyAt = 0; // when the printer should be free to take the next-but-one label
+    const finishes = [];
+    for (const [i, it] of list.entries()) {
+      if (i >= 2 && !TEST_NO_PACING) { const wait = finishes[i - 2] - performance.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); }
+      $("progressText").textContent = `Sending ${it.src.name} (${sent + 1}–${sent + it.copies} of ${total})…`;
+      await writeBytes(jobs[i], f => $("progress").value = (bytesDone + f * jobs[i].length) / totalBytes);
+      bytesDone += jobs[i].length;
+      readyAt = Math.max(performance.now(), readyAt) + printMs(it);
+      finishes.push(readyAt);
+      it.done = true; sent += it.copies; drawQueue();
+    }
+    const stream = { length: totalBytes };
     list.forEach(it => { if (!it.done) { it.done = true; sent += it.copies; } });
     drawQueue();
     lastSendInfo = `${Math.round(stream.length / 1024)} KB in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
@@ -1249,7 +1268,7 @@ if ("launchQueue" in window) {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.13-25"; // bump on every release
+const APP_VERSION = "2026.11.13-26"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
