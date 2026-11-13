@@ -987,7 +987,7 @@ async function handleShared() {
 }
 
 /* ---------------- Updates ---------------- */
-const APP_VERSION = "2026.11.12-17"; // bump on every release
+const APP_VERSION = "2026.11.13-18"; // bump on every release
 $("versionText").textContent = `Version ${APP_VERSION}`;
 $("updateBtn").onclick = async () => {
   if (busy) { say("Wait until printing has been sent, then check for updates.", "info"); return; }
@@ -1021,10 +1021,22 @@ if ("serviceWorker" in navigator) {
   }
   if (shared) await handleShared();
 })();
-// Reconnect by itself when you come back to the app, and notice when the printer goes away.
+// Only hold the printer while the app is on screen: let go shortly after it goes to the background
+// (so a shared label, another copy of the app or the Jadens app can connect), and reconnect on return.
+let releaseTimer = null;
+async function releaseWhenIdle() {
+  if (busy) { releaseTimer = setTimeout(releaseWhenIdle, 1000); return; }
+  if (link && document.visibilityState === "hidden") {
+    await new Promise(r => setTimeout(r, 300)); // let the last bytes leave
+    await disconnect(); setStatus("Paused in background", "");
+  }
+}
 document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState === "visible" && !link && !busy && anySupported() && (S.link === "ble" ? false : await knownPort())) await connect(false, true);
+  clearTimeout(releaseTimer);
+  if (document.visibilityState === "hidden") { releaseTimer = setTimeout(releaseWhenIdle, 1500); return; }
+  if (!link && !busy && anySupported() && (S.link === "ble" ? false : await knownPort())) await connect(false, true);
 });
+window.addEventListener("pagehide", () => { if (link && !busy) link.close(); });
 if ("serial" in navigator && typeof navigator.serial.addEventListener === "function") navigator.serial.addEventListener("disconnect", () => {
   if (link && link.kind === "serial") { link = null; setStatus("Printer off? Tap Connect", ""); $("connectBtn").textContent = "Connect"; }
 });
