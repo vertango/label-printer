@@ -145,7 +145,15 @@ public class AutoPrintActivity extends Activity {
     @Override protected void onPause() { super.onPause(); ui.removeCallbacks(tick); }
     private final Runnable tick = new Runnable() { @Override public void run() { refreshLog(); ui.postDelayed(this, 2000); } };
 
-    @Override public void onRequestPermissionsResult(int code, String[] p, int[] r) { refresh(); }
+    @Override public void onRequestPermissionsResult(int code, String[] p, int[] r) {
+        boolean denied = r.length == 0 || r[0] != PackageManager.PERMISSION_GRANTED;
+        if (denied && p.length > 0 && !shouldShowRequestPermissionRationale(p[0])) {
+            // Android won't ask again (it was refused before): open the app's own settings page.
+            Toast.makeText(this, "Tap Permissions, then " + (code == 2 ? "Notifications" : "Nearby devices") + ", and choose Allow.", Toast.LENGTH_LONG).show();
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+        }
+        refresh();
+    }
 
     private boolean hasBt() {
         return Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
