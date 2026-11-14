@@ -76,7 +76,7 @@ public final class LabelBuilder {
             byte[] bits = LabelPipeline.layout(pdf.page(n), o);
             if (!stamp.isEmpty()) bits = stamp(pdf.page(n), o, bits, stamp);
             r.jobs.add(Tspl.jadensJob(bits, prefs.density(), prefs.speed(), 1, false));
-            if (li != null) r.stamps.add(stamp);
+            if (pair && li != null) r.stamps.add(stamp);
         }
         return r;
     }

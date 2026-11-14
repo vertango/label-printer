@@ -33,7 +33,8 @@ public class HostTest {
         if (p.rot != 90) throw new AssertionError("landscape should turn");
         LabelRaster.Plan q = LabelRaster.plan(288, 432, -2, 0, 1);
         System.out.println("6x4 plan rot=" + p.rot + " " + p.cw + "x" + p.ch + " at " + p.ox + "," + p.oy + "; 4x6 " + q.cw + "x" + q.ch + " at " + q.ox + "," + q.oy);
-        if (!LabelRaster.looksLikeLabel(288, 432) || LabelRaster.looksLikeLabel(595, 842)) throw new AssertionError("looksLikeLabel");
+        if (!LabelRaster.looksLikeLabel(288, 432) || LabelRaster.looksLikeLabel(595, 842) || LabelRaster.looksLikeLabel(612, 792)) throw new AssertionError("looksLikeLabel");
+        if (!LabelRaster.looksLikeLabel(420, 595) || !LabelRaster.looksLikeLabel(298, 420) || !LabelRaster.looksLikeLabel(595, 420)) throw new AssertionError("A5/A6 labels");
         // 3. A test label from a picture: arrow pointing up on a landscape piece, check turned right.
         int cw = p.cw, ch = p.ch; int[] piece = new int[cw * ch]; java.util.Arrays.fill(piece, 0xffffffff);
         for (int y = 0; y < ch / 4; y++) for (int x = 0; x < cw; x++) piece[y * cw + x] = 0xff000000; // black top band

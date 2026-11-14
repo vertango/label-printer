@@ -23,7 +23,11 @@ public final class LabelRaster {
         double r = w / h;
         if (Math.abs(r - 2.0 / 3) < 0.015 || Math.abs(r - 1.5) < 0.03) return true;
         double lo = Math.min(w, h), hi = Math.max(w, h);
-        return lo > 250 && lo < 330 && hi > 380 && hi < 485;
+        if (lo > 250 && lo < 330 && hi > 380 && hi < 485) return true;
+        // Other small label pages (A6, A5, 4x6 drawn larger…): label-shaped and no bigger than A5.
+        // A4 and Letter pages are bigger, so they don't count.
+        double q = lo / hi;
+        return q > 0.58 && q < 0.76 && hi <= 640 && lo >= 200;
     }
 
     /** Box around the printed content as fractions {x, y, w, h} of the picture. */
