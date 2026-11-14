@@ -81,6 +81,37 @@ public final class LabelBuilder {
         return r;
     }
 
+    /** A picture of a label (PNG / JPG). */
+    public static Result buildImage(File f, Prefs prefs) throws Exception {
+        android.graphics.BitmapFactory.Options bo = new android.graphics.BitmapFactory.Options();
+        bo.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath(), bo);
+        if (bo.outWidth <= 0) throw new Exception("not a picture");
+        int sample = 1;
+        while (bo.outWidth / sample > 3000 || bo.outHeight / sample > 3000) sample *= 2;
+        bo = new android.graphics.BitmapFactory.Options(); bo.inSampleSize = sample;
+        final Bitmap src = android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath(), bo);
+        if (src == null) throw new Exception("not a picture");
+        LabelPipeline.Page page = new LabelPipeline.Page() {
+            public double width() { return src.getWidth(); }
+            public double height() { return src.getHeight(); }
+            public int[] render(double[] r, int w, int h) {
+                Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                Canvas cv = new Canvas(out); cv.drawColor(Color.WHITE);
+                android.graphics.Rect from = new android.graphics.Rect((int) Math.round(r[0] * src.getWidth()), (int) Math.round(r[1] * src.getHeight()),
+                        (int) Math.round((r[0] + r[2]) * src.getWidth()), (int) Math.round((r[1] + r[3]) * src.getHeight()));
+                cv.drawBitmap(src, from, new android.graphics.Rect(0, 0, w, h), new Paint(Paint.FILTER_BITMAP_FLAG));
+                int[] px = new int[w * h]; out.getPixels(px, 0, w, 0, 0, w, h); out.recycle();
+                for (int i = 0; i < px.length; i++) if ((px[i] >>> 24) < 128) px[i] = 0xffffffff;
+                return px;
+            }
+        };
+        Result r = new Result();
+        r.jobs.add(Tspl.jadensJob(LabelPipeline.layout(page, prefs.options()), prefs.density(), prefs.speed(), 1, false));
+        src.recycle();
+        return r;
+    }
+
     private static List<Integer> allPages(int n) { List<Integer> l = new ArrayList<>(); for (int i = 0; i < n; i++) l.add(i); return l; }
 
     private static Paint paint(float size) {

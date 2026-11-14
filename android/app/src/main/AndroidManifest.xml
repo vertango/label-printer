@@ -46,6 +46,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Links to the app itself open in the app -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="vertango.github.io" android:pathPrefix="/label-printer" />
+            </intent-filter>
+        </activity>
+
+        <!-- Share / Open with: prints straight away, nothing opens. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <!-- "Open with" for label files -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -66,13 +83,6 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
 
-            <!-- Links to the app itself open in the app -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="vertango.github.io" android:pathPrefix="/label-printer" />
-            </intent-filter>
         </activity>
 
         <activity

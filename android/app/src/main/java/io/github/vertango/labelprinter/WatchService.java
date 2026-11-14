@@ -59,6 +59,10 @@ public class WatchService extends Service {
         boolean bt = Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(c, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
         return bt && canReadDownloads(c);
     }
+    /** Enough to print a file someone shares with the app (no Downloads access needed). */
+    public static boolean canPrint(Context c) {
+        return Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(c, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+    }
     public static boolean canReadDownloads(Context c) {
         if (Build.VERSION.SDK_INT >= 30) return Environment.isExternalStorageManager();
         return ContextCompat.checkSelfPermission(c, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
@@ -96,7 +100,7 @@ public class WatchService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (!canRun(this)) {
+        if (ACTION_PRINT_FILE.equals(action) ? !canPrint(this) : !canRun(this)) {
             prefs.log("Auto-print needs Nearby devices and file access — open Label Auto-print");
             stopSelf();
             return START_NOT_STICKY;
@@ -188,7 +192,14 @@ public class WatchService extends Service {
         if (attempt == 0) prefs.log("New download: " + name);
         List<byte[]> jobs;
         LabelBuilder.Result built;
-        try (PdfPages pdf = new PdfPages(f)) {
+        if (!isPdf(f)) { // a picture (PNG / JPG)
+            try { built = LabelBuilder.buildImage(f, prefs); jobs = built.jobs; }
+            catch (Exception e) {
+                prefs.log("Couldn't open " + name);
+                event("Couldn't open " + name, "It isn't a PDF or a picture the app can read.", null);
+                return;
+            }
+        } else try (PdfPages pdf = new PdfPages(f)) {
             String rule = prefs.rule();
             boolean named = LABEL_NAME.matcher(name).find();
             built = LabelBuilder.build(this, f, pdf, prefs, (n, labelSized) ->
