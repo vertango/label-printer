@@ -63,6 +63,9 @@ public final class LabelBuilder {
         java.util.Map<Integer, Integer> labelIndex = new java.util.HashMap<>();
         for (int i = 0; i < labels.size(); i++) labelIndex.put(labels.get(i), i);
         LabelPipeline.Options o = prefs.options();
+        // A label on its own: the SKU comes from Outlet by the order number in the file name.
+        boolean byOrder = prefs.skuStamp() && OrderLookup.ebayOrderFrom(f.getName()) != null && OrderList.linked(c);
+        String orderStamp = byOrder ? OrderList.stampFor(c, f.getName()) : "";
         for (int k = 0; k < toPrint.size(); k++) {
             int n = toPrint.get(k);
             double[] sz = pdf.size(n);
@@ -73,10 +76,12 @@ public final class LabelBuilder {
                 int s = slips.size() == 1 ? slips.get(0) : (li < slips.size() ? slips.get(li) : -1);
                 if (s >= 0) stamp = matcher.stampFor(text[s]);
             }
+            boolean isLabel = li != null || slips.isEmpty();
+            if (stamp.isEmpty() && byOrder && isLabel) stamp = orderStamp;
             byte[] bits = LabelPipeline.layout(pdf.page(n), o);
             if (!stamp.isEmpty()) bits = stamp(pdf.page(n), o, bits, stamp);
             r.jobs.add(Tspl.jadensJob(bits, prefs.density(), prefs.speed(), 1, false));
-            if (pair && li != null) r.stamps.add(stamp);
+            if ((pair && li != null) || (byOrder && isLabel)) r.stamps.add(stamp);
         }
         return r;
     }

@@ -1,0 +1,22 @@
+name: Check (no release)
+
+# Builds and tests changes on other branches without publishing an app.
+# Only pushes to main publish the APK (android.yml).
+on:
+  push:
+    branches-ignore: [main]
+    paths: ["android/**", ".github/workflows/check.yml"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.10.2" }
+      - name: Off-device tests
+        run: android/hosttest/run.sh
+      - name: Compile check
+        run: gradle -p android assembleDebug --no-daemon
