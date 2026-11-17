@@ -48,7 +48,7 @@ public class AutoPrintActivity extends Activity {
     private Prefs prefs;
     private LinearLayout root;
     private Switch onOff;
-    private TextView status, log, skuInfo;
+    private TextView status, log, skuInfo, outletInfo;
     private Button btPerm, notePerm, filePerm, batteryPerm;
     private Spinner printer;
     private final List<BluetoothDevice> devices = new ArrayList<>();
@@ -117,7 +117,20 @@ public class AutoPrintActivity extends Activity {
         text("Anything skipped shows a notification with a Print anyway button.");
 
         heading("SKU on eBay labels");
-        text("On eBay, tick both Postage label and Invoice/Packing slip, then Download. Only the label prints, with the item's SKU on it. The SKU comes from your SKU list: in Outlet Analytics open Packing list and tap Download SKU list for label printer (again after adding listings).");
+        text("Link Outlet Analytics once and every eBay label prints with its SKU: the app reads the order number from the label's file name (\"eBay label 25-15411-62068.pdf\") and looks it up. No names or addresses are sent anywhere. In Outlet Analytics open Packing list → Label Printer link, copy the printer code and paste it here.");
+        outletInfo = text("");
+        final android.widget.EditText codeIn = new android.widget.EditText(this);
+        codeIn.setHint("Paste the printer code (OUTLET-LP1.…)");
+        codeIn.setSingleLine(true);
+        root.addView(codeIn);
+        button("Save printer code", v -> {
+            if (!OrderList.saveCode(this, codeIn.getText().toString())) { Toast.makeText(this, "That isn't a printer code. Copy it again from Outlet Analytics.", Toast.LENGTH_LONG).show(); return; }
+            codeIn.setText("");
+            prefs.log("Outlet link saved");
+            refreshOutlet();
+        });
+        button("Update order list now", v -> refreshOutlet());
+        text("Also works without the link: on eBay, tick both Postage label and Invoice/Packing slip, then Download. Only the label prints, with the SKU from the packing slip (uses the SKU list from Outlet's Packing list).");
         skuInfo = text("");
         toggle("Print the SKU on eBay labels", prefs.skuStamp(), prefs::skuStamp);
         toggle("Don't print the packing slip (labels only)", prefs.labelsOnly(), prefs::labelsOnly);
@@ -200,7 +213,21 @@ public class AutoPrintActivity extends Activity {
                 + "\nPrinted today: " + today + " label" + (today == 1 ? "" : "s"));
         String sum = SkuList.summary(this);
         skuInfo.setText(sum == null ? "SKU list: not downloaded yet." : "✅ SKU list: " + sum);
+        String os = OrderList.summary(this);
+        outletInfo.setText(os == null ? "Outlet link: not set up." : (os.contains("—") ? "⚠️ Outlet link: " : "✅ Outlet link: ") + os);
         refreshLog();
+    }
+    /** Fetches the order list in the background, then shows the result. */
+    private void refreshOutlet() {
+        if (!OrderList.linked(this)) { Toast.makeText(this, "Paste the printer code first.", Toast.LENGTH_SHORT).show(); return; }
+        outletInfo.setText("Outlet link: updating…");
+        new Thread(() -> {
+            int n = OrderList.refresh(this);
+            runOnUiThread(() -> {
+                String os = OrderList.summary(this);
+                outletInfo.setText((n >= 0 ? "✅ Outlet link: " : "⚠️ Outlet link: ") + (os == null ? "" : os));
+            });
+        }).start();
     }
     private void refreshLog() { String l = prefs.log(); log.setText(l.isEmpty() ? "Nothing yet." : l); }
 
