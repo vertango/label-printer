@@ -22,6 +22,8 @@ public final class LabelBuilder {
         public final List<byte[]> jobs = new ArrayList<>();
         public final List<String> stamps = new ArrayList<>();
         public int slipsSkipped;
+        public int trackingRead;    // labels whose barcode gave a tracking number
+        public boolean byTracking;  // SKUs looked up by tracking number
     }
 
     private static boolean pdfboxReady;
@@ -66,6 +68,26 @@ public final class LabelBuilder {
         // A label on its own: the SKU comes from Outlet by the order number in the file name.
         boolean byOrder = prefs.skuStamp() && OrderLookup.ebayOrderFrom(f.getName()) != null && OrderList.linked(c);
         String orderStamp = byOrder ? OrderList.stampFor(c, f.getName()) : "";
+        // Bulk eBay labels (no order number in the name, no packing slips): read the tracking
+        // number from each label's barcode and look it up in the Outlet list.
+        boolean byTracking = prefs.skuStamp() && !byOrder && !pair && OrderList.linked(c);
+        java.util.Map<Integer, String> trackStamp = new java.util.HashMap<>();
+        if (byTracking) {
+            List<Integer> pagesRead = new ArrayList<>();
+            List<List<String>> numbers = new ArrayList<>();
+            for (int n : toPrint) {
+                double[] sz = pdf.size(n);
+                if (!LabelRaster.looksLikeLabel(sz[0], sz[1])) continue;
+                double s = Math.min(400 / 72.0, 2000 / Math.max(sz[0], sz[1]));
+                int w = (int) Math.round(sz[0] * s), h = (int) Math.round(sz[1] * s);
+                List<String> t = Barcodes.trackingNumbers(Barcodes.read(pdf.page(n).render(new double[]{0, 0, 1, 1}, w, h), w, h));
+                pagesRead.add(n); numbers.add(t);
+                r.trackingRead += t.isEmpty() ? 0 : 1;
+            }
+            String[] found = OrderList.stampsForTracking(c, numbers);
+            for (int i = 0; i < pagesRead.size(); i++) trackStamp.put(pagesRead.get(i), found[i]);
+            r.byTracking = !pagesRead.isEmpty();
+        }
         for (int k = 0; k < toPrint.size(); k++) {
             int n = toPrint.get(k);
             double[] sz = pdf.size(n);
@@ -78,10 +100,11 @@ public final class LabelBuilder {
             }
             boolean isLabel = li != null || slips.isEmpty();
             if (stamp.isEmpty() && byOrder && isLabel) stamp = orderStamp;
+            if (stamp.isEmpty() && trackStamp.containsKey(n)) stamp = trackStamp.get(n);
             byte[] bits = LabelPipeline.layout(pdf.page(n), o);
             if (!stamp.isEmpty()) bits = stamp(pdf.page(n), o, bits, stamp);
             r.jobs.add(Tspl.jadensJob(bits, prefs.density(), prefs.speed(), 1, false));
-            if ((pair && li != null) || (byOrder && isLabel)) r.stamps.add(stamp);
+            if ((pair && li != null) || (byOrder && isLabel) || trackStamp.containsKey(n)) r.stamps.add(stamp);
         }
         return r;
     }

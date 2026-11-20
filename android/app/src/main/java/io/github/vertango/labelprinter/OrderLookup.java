@@ -74,6 +74,16 @@ public final class OrderLookup {
     }
     public static String readToken(String secret) { return hmacHex(secret, "label/relay-read").substring(0, 32); }
 
+    /** SKU text for a label by its tracking numbers (read from the barcode), or "". */
+    public static String stampForTracking(String secret, Map<String, String> orders, java.util.List<String> tracking) {
+        if (secret == null || orders == null || tracking == null) return "";
+        for (String t : tracking) {
+            String s = orders.get(key(secret, "ebay-tracking", t.replaceAll("\\s+", "")));
+            if (s != null) return s;
+        }
+        return "";
+    }
+
     /** SKU text for a label file, or "" if the name has no order number or the order isn't listed. */
     public static String stampFor(String fileName, String secret, Map<String, String> orders) {
         String no = ebayOrderFrom(fileName);

@@ -85,6 +85,32 @@ public final class OrderList {
         return s;
     }
 
+    /**
+     * SKU text for each label's tracking numbers ("" when not found). If any label isn't found
+     * or the list is old, fetches the list once and looks again. Call off the main thread.
+     */
+    public static String[] stampsForTracking(Context c, java.util.List<java.util.List<String>> perLabel) {
+        String[] out = new String[perLabel.size()];
+        java.util.Arrays.fill(out, "");
+        if (!linked(c)) return out;
+        String secret = sp(c).getString("secret", null);
+        Map<String, String> orders = cached(c);
+        boolean missing = false, any = false;
+        for (int i = 0; i < out.length; i++) {
+            if (perLabel.get(i).isEmpty()) continue;
+            any = true;
+            out[i] = OrderLookup.stampForTracking(secret, orders, perLabel.get(i));
+            if (out[i].isEmpty()) missing = true;
+        }
+        boolean stale = System.currentTimeMillis() - sp(c).getLong("fetched", 0) > FRESH_MS;
+        if (any && (missing || stale) && Looper.myLooper() != Looper.getMainLooper() && refresh(c) >= 0) {
+            orders = cached(c);
+            for (int i = 0; i < out.length; i++)
+                if (!perLabel.get(i).isEmpty()) out[i] = OrderLookup.stampForTracking(secret, orders, perLabel.get(i));
+        }
+        return out;
+    }
+
     /** "142 orders, updated 19:05" or a problem, or null when not linked. */
     public static String summary(Context c) {
         if (!linked(c)) return null;
