@@ -20,3 +20,5 @@ jobs:
         run: android/hosttest/run.sh
       - name: Compile check
         run: gradle -p android assembleDebug --no-daemon
+      - name: Unit tests (barcodes)
+        run: gradle -p android testDebugUnitTest --no-daemon
