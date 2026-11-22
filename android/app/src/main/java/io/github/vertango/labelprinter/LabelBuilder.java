@@ -24,6 +24,7 @@ public final class LabelBuilder {
         public int slipsSkipped;
         public int trackingRead;    // labels whose barcode gave a tracking number
         public boolean byTracking;  // SKUs looked up by tracking number
+        public final List<String> trackingSeen = new ArrayList<>(); // what each barcode said (for Recent)
     }
 
     private static boolean pdfboxReady;
@@ -82,6 +83,7 @@ public final class LabelBuilder {
                 int w = (int) Math.round(sz[0] * s), h = (int) Math.round(sz[1] * s);
                 List<String> t = Barcodes.trackingNumbers(Barcodes.read(pdf.page(n).render(new double[]{0, 0, 1, 1}, w, h), w, h));
                 pagesRead.add(n); numbers.add(t);
+                r.trackingSeen.add(t.isEmpty() ? "none" : t.get(0));
                 r.trackingRead += t.isEmpty() ? 0 : 1;
             }
             String[] found = OrderList.stampsForTracking(c, numbers);

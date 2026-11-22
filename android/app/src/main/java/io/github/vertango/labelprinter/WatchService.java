@@ -220,7 +220,8 @@ public class WatchService extends Service {
             prefs.log((built.slipsSkipped > 0 ? "Labels only (" + built.slipsSkipped + " packing slip" + (built.slipsSkipped == 1 ? "" : "s") + " not printed). " : "")
                     + (prefs.skuStamp() ? "SKU: " + sk + (SkuList.summary(this) == null && !OrderList.linked(this) ? " — link Outlet Analytics in Auto-print settings" : "") : "SKU printing is off")
                     + (built.byTracking && sk.indexOf("no SKU found") >= 0
-                        ? " (by tracking number: read " + built.trackingRead + " of " + built.stamps.size() + " barcodes. Missing ones: tap Get latest orders in Outlet, wait a minute, then reprint)" : ""));
+                        ? " (by tracking number: read " + built.trackingRead + " of " + built.stamps.size() + " barcodes: "
+                          + String.join(", ", built.trackingSeen) + ". Missing ones: tap Get latest orders in Outlet, wait a minute, then reprint)" : ""));
         }
         if (jobs.isEmpty()) {
             prefs.log("Skipped " + name + " (doesn't look like a label)");
