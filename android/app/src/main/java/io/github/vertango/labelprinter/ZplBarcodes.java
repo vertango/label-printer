@@ -30,10 +30,12 @@ public final class ZplBarcodes implements ZplDraw.Modules {
                     if (o.cols > 0) p.setDimensions(o.cols, o.cols, 90, 3);
                     p.generateBarcodeLogic(o.text, o.security > 0 ? Math.min(8, o.security) : 2);
                     byte[][] m = p.getBarcodeMatrix().getScaledMatrix(1, 1);
+                    // ZXing keeps PDF417 rows bottom-up; turn them the right way up.
                     boolean[][] out = new boolean[m.length][];
                     for (int r = 0; r < m.length; r++) {
-                        out[r] = new boolean[m[r].length];
-                        for (int c = 0; c < m[r].length; c++) out[r][c] = m[r][c] == 1;
+                        byte[] src = m[m.length - 1 - r];
+                        out[r] = new boolean[src.length];
+                        for (int c = 0; c < src.length; c++) out[r][c] = src[c] == 1;
                     }
                     return out;
                 }
