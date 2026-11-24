@@ -74,6 +74,10 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="image/png" />
                 <data android:mimeType="image/jpeg" />
+                <!-- ZPL label files (Zebra printer language), which usually have no proper type -->
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zpl" />
+                <data android:mimeType="application/x-zpl" />
             </intent-filter>
 
             <!-- Share menu -->
@@ -83,6 +87,9 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zpl" />
+                <data android:mimeType="application/x-zpl" />
             </intent-filter>
 
         </activity>

@@ -167,7 +167,7 @@ public class WatchService extends Service {
                 continue;
             }
             // eBay's downloads can be named like "5ce967e7-…" with no ".pdf", so look inside the file.
-            if (!low.endsWith(".pdf") && f.length() > 0 && !isPdf(f)) { handled.add(k); continue; }
+            if (!low.endsWith(".pdf") && f.length() > 0 && !isPdf(f) && !(low.endsWith(".zpl") || LabelBuilder.isZpl(f))) { handled.add(k); continue; }
             long len = f.length();
             Long before = sizes.get(k);
             if (len > 0 && before != null && before == len) {
@@ -192,7 +192,14 @@ public class WatchService extends Service {
         if (attempt == 0) prefs.log("New download: " + name);
         List<byte[]> jobs;
         LabelBuilder.Result built;
-        if (!isPdf(f)) { // a picture (PNG / JPG)
+        if (!isPdf(f) && LabelBuilder.isZpl(f)) { // ZPL label file (e.g. Evri): always labels
+            try { built = LabelBuilder.buildZpl(f, prefs); jobs = built.jobs; }
+            catch (Exception e) {
+                prefs.log("Couldn't read " + name + " (ZPL)");
+                event("Couldn't read " + name, "The label file couldn't be read.", null);
+                return;
+            }
+        } else if (!isPdf(f)) { // a picture (PNG / JPG)
             try { built = LabelBuilder.buildImage(f, prefs); jobs = built.jobs; }
             catch (Exception e) {
                 prefs.log("Couldn't open " + name);

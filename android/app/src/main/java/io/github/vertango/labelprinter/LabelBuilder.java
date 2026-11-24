@@ -111,6 +111,31 @@ public final class LabelBuilder {
         return r;
     }
 
+    /** Is this file ZPL (Zebra printer language)? Looks at the start of the file. */
+    public static boolean isZpl(File f) {
+        byte[] head = new byte[4096];
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            int n = in.read(head);
+            return n > 0 && Zpl.looksLikeZpl(new String(head, 0, n, java.nio.charset.StandardCharsets.ISO_8859_1));
+        } catch (Exception e) { return false; }
+    }
+
+    /** A ZPL file: every label in it, drawn and laid out like a PDF label page. */
+    public static Result buildZpl(File f, Prefs prefs) throws Exception {
+        if (f.length() > 20L * 1024 * 1024) throw new Exception("too big");
+        byte[] raw = java.nio.file.Files.readAllBytes(f.toPath());
+        List<Zpl.Label> labels = Zpl.parse(new String(raw, java.nio.charset.StandardCharsets.ISO_8859_1));
+        Result r = new Result();
+        for (Zpl.Label l : labels) {
+            ZplPage page = new ZplPage(l);
+            try {
+                LabelPipeline.Options o = prefs.options();
+                r.jobs.add(Tspl.jadensJob(LabelPipeline.layout(page, o), prefs.density(), prefs.speed(), 1, false));
+            } finally { page.recycle(); }
+        }
+        return r;
+    }
+
     /** A picture of a label (PNG / JPG). */
     public static Result buildImage(File f, Prefs prefs) throws Exception {
         android.graphics.BitmapFactory.Options bo = new android.graphics.BitmapFactory.Options();
